@@ -13,6 +13,7 @@ pub mod trade;
 use serde::{Deserialize, Serialize};
 
 /// Available Kraken WebSocket V2 channels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Channel {
     Book,
     Ticker,
@@ -28,6 +29,7 @@ pub enum Channel {
 
 impl Channel {
     /// Returns the wire-format channel name expected by the Kraken API.
+    #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
             Channel::Book => "book",
@@ -44,6 +46,7 @@ impl Channel {
 
 /// Per-channel message limits controlling how many updates to collect
 /// before automatically unsubscribing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelLimits {
     pub ticker: usize,
     pub book: usize,
@@ -52,35 +55,98 @@ pub struct ChannelLimits {
     pub instrument: usize,
 }
 
+impl ChannelLimits {
+    /// Creates a new `ChannelLimits` with the specified limits for each channel.
+    #[must_use]
+    pub fn new(ticker: usize, book: usize, candle: usize, trade: usize, instrument: usize) -> Self {
+        Self {
+            ticker,
+            book,
+            candle,
+            trade,
+            instrument,
+        }
+    }
+}
+
 /// A `subscribe` request sent to the Kraken WebSocket API.
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct SubscribeRequest {
-    pub method: String,
-    pub params: Params,
+    method: String,
+    params: Params,
+}
+
+impl SubscribeRequest {
+    /// Creates a new subscribe request for the given channel and symbols.
+    #[must_use]
+    pub fn new(channel: &Channel, symbols: &[String]) -> Self {
+        Self {
+            method: "subscribe".to_string(),
+            params: Params::new(channel, symbols),
+        }
+    }
 }
 
 /// An `unsubscribe` request sent to the Kraken WebSocket API.
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct UnsubscribeRequest {
-    pub method: String,
-    pub params: Params,
+    method: String,
+    params: Params,
+}
+
+impl UnsubscribeRequest {
+    /// Creates a new unsubscribe request for the given channel and symbols.
+    #[must_use]
+    pub fn new(channel: &Channel, symbols: &[String]) -> Self {
+        Self {
+            method: "unsubscribe".to_string(),
+            params: Params::new(channel, symbols),
+        }
+    }
 }
 
 /// Channel and symbol parameters used in subscribe/unsubscribe requests.
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Params {
-    pub channel: String,
-    pub symbol: Vec<String>,
+    channel: String,
+    symbol: Vec<String>,
+}
+
+impl Params {
+    /// Creates new parameters for the given channel and symbols.
+    #[must_use]
+    pub fn new(channel: &Channel, symbols: &[String]) -> Self {
+        Self {
+            channel: channel.as_str().to_string(),
+            symbol: symbols.to_vec(),
+        }
+    }
 }
 
 /// A `ping` request used to test connection liveness.
-#[derive(Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct PingRequest {
-    pub method: String,
+    method: String,
+}
+
+impl PingRequest {
+    /// Creates a new ping request.
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            method: "ping".to_string(),
+        }
+    }
+}
+
+impl Default for PingRequest {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Server response to a [`PingRequest`].
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PongResponse {
     pub method: String,
     pub time_in: String,
@@ -88,13 +154,13 @@ pub struct PongResponse {
 }
 
 /// Periodic heartbeat message indicating the connection is alive.
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct HeartbeatResponse {
     pub channel: String,
 }
 
 /// System status update broadcast on the `status` channel.
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct StatusUpdateResponse {
     pub channel: String,
     #[serde(rename = "type")]
@@ -103,7 +169,7 @@ pub struct StatusUpdateResponse {
 }
 
 /// Detailed system status information.
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct StatusData {
     pub api_version: String,
     pub connection_id: u64,

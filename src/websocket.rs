@@ -6,8 +6,10 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use tracing::{debug, info, warn};
 use tungstenite::Message;
 
+use crate::error::LeesonError;
 use crate::Result;
 
 use crate::models::book::BookUpdateResponse;
@@ -16,8 +18,7 @@ use crate::models::instrument::InstrumentUpdateResponse;
 use crate::models::ticker::TickerUpdateResponse;
 use crate::models::trade::TradeUpdateResponse;
 use crate::models::{
-    Channel, ChannelLimits, Params, PingRequest, PongResponse, StatusUpdateResponse,
-    SubscribeRequest, UnsubscribeRequest,
+    Channel, PingRequest, PongResponse, StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
 };
 
 /// Write half of a Kraken WebSocket connection.
@@ -31,9 +32,9 @@ pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 /// # Errors
 ///
 /// Returns a [`LeesonError`](crate::LeesonError) if the connection or TLS handshake fails.
-pub async fn connect(url: String) -> Result<(WsWriter, WsReader)> {
-    let (ws_stream, _) = connect_async(&url).await?;
-    println!("Handshake successfully completed.");
+pub async fn connect(url: &str) -> Result<(WsWriter, WsReader)> {
+    let (ws_stream, _) = connect_async(url).await?;
+    info!("WebSocket handshake completed");
 
     Ok(ws_stream.split())
 }
@@ -44,12 +45,10 @@ pub async fn connect(url: String) -> Result<(WsWriter, WsReader)> {
 ///
 /// Returns a [`LeesonError`](crate::LeesonError) if sending the message fails.
 pub async fn ping(write: &mut WsWriter) -> Result<()> {
-    let request = PingRequest {
-        method: "ping".to_string(),
-    };
-
+    let request = PingRequest::new();
     let json = serde_json::to_string(&request)?;
     write.send(Message::Text(json.into())).await?;
+    debug!("Sent ping");
 
     Ok(())
 }
@@ -59,18 +58,11 @@ pub async fn ping(write: &mut WsWriter) -> Result<()> {
 /// # Errors
 ///
 /// Returns a [`LeesonError`](crate::LeesonError) if sending the subscription message fails.
-pub async fn subscribe(write: &mut WsWriter, channel: &Channel, symbol: &[String]) -> Result<()> {
-    let request = SubscribeRequest {
-        method: "subscribe".to_string(),
-        params: Params {
-            channel: channel.as_str().to_string(),
-            symbol: symbol.to_vec(),
-        },
-    };
-
+pub async fn subscribe(write: &mut WsWriter, channel: &Channel, symbols: &[String]) -> Result<()> {
+    let request = SubscribeRequest::new(channel, symbols);
     let json = serde_json::to_string(&request)?;
     write.send(Message::Text(json.into())).await?;
-    println!("Subscribed to {} channel.", channel.as_str());
+    info!(channel = channel.as_str(), "Subscribed to channel");
 
     Ok(())
 }
@@ -86,7 +78,7 @@ pub async fn subscribe_instrument(write: &mut WsWriter) -> Result<()> {
         "params": { "channel": Channel::Instruments.as_str() }
     }))?;
     write.send(Message::Text(json.into())).await?;
-    println!("Subscribed to {} channel.", Channel::Instruments.as_str());
+    info!(channel = Channel::Instruments.as_str(), "Subscribed to channel");
 
     Ok(())
 }
@@ -102,10 +94,7 @@ pub async fn unsubscribe_instrument(write: &mut WsWriter) -> Result<()> {
         "params": { "channel": Channel::Instruments.as_str() }
     }))?;
     write.send(Message::Text(json.into())).await?;
-    println!(
-        "Unsubscribed from {} channel.",
-        Channel::Instruments.as_str()
-    );
+    info!(channel = Channel::Instruments.as_str(), "Unsubscribed from channel");
 
     Ok(())
 }
@@ -115,58 +104,36 @@ pub async fn unsubscribe_instrument(write: &mut WsWriter) -> Result<()> {
 /// # Errors
 ///
 /// Returns a [`LeesonError`](crate::LeesonError) if sending the unsubscribe message fails.
-pub async fn unsubscribe(write: &mut WsWriter, channel: &Channel, symbol: &[String]) -> Result<()> {
-    let request = UnsubscribeRequest {
-        method: "unsubscribe".to_string(),
-        params: Params {
-            channel: channel.as_str().to_string(),
-            symbol: symbol.to_vec(),
-        },
-    };
-
+pub async fn unsubscribe(
+    write: &mut WsWriter,
+    channel: &Channel,
+    symbols: &[String],
+) -> Result<()> {
+    let request = UnsubscribeRequest::new(channel, symbols);
     let json = serde_json::to_string(&request)?;
     write.send(Message::Text(json.into())).await?;
-    println!("Unsubscribed from {} channel.", channel.as_str());
+    info!(channel = channel.as_str(), "Unsubscribed from channel");
 
     Ok(())
 }
 
-/// Reads and dispatches incoming WebSocket messages until all channel
-/// limits are reached.
+/// Reads and dispatches incoming WebSocket messages indefinitely.
 ///
-/// For each channel, up to `limits.<channel>` update messages are processed
-/// and printed. Once a channel's limit is reached, it is automatically
-/// unsubscribed. The function returns when every channel has hit its limit.
+/// Messages are parsed and logged via `tracing`. The function runs until
+/// the WebSocket connection closes or an error occurs.
 ///
 /// # Errors
 ///
-/// Returns a [`LeesonError`](crate::LeesonError) if reading from or
-/// writing to the WebSocket fails, or if a message cannot be
-/// deserialized into the expected response type.
-pub async fn process_messages(
-    write: &mut WsWriter,
-    read: &mut WsReader,
-    symbol: &[String],
-    limits: &ChannelLimits,
-) -> Result<()> {
-    // Per-channel counters tracking how many updates have been received.
-    let mut ticker_count = 0;
-    let mut book_count = 0;
-    let mut candle_count = 0;
-    let mut trade_count = 0;
-    let mut instrument_count = 0;
-
+/// Returns a [`LeesonError`](crate::LeesonError) if reading from the
+/// WebSocket fails, or if a message cannot be deserialized into the
+/// expected response type.
+pub async fn process_messages(read: &mut WsReader) -> Result<()> {
     while let Some(msg) = read.next().await {
         let msg = msg?;
 
         if let Message::Text(text) = msg {
-            let value: serde_json::Value = match serde_json::from_str(&text) {
-                Ok(v) => v,
-                Err(e) => {
-                    eprintln!("skipping malformed message: {e}");
-                    continue;
-                }
-            };
+            let value: serde_json::Value = serde_json::from_str(&text)
+                .map_err(|e| LeesonError::MalformedMessage(e.to_string()))?;
 
             let msg_method = value.get("method").and_then(|m| m.as_str());
             let msg_type = value.get("type").and_then(|t| t.as_str());
@@ -174,26 +141,31 @@ pub async fn process_messages(
 
             if msg_method == Some("pong") {
                 let response: PongResponse = serde_json::from_value(value)?;
-
-                println!(
-                    "[{}] time_in: {} time_out: {}",
-                    response.method, response.time_in, response.time_out
+                debug!(
+                    method = response.method,
+                    time_in = response.time_in,
+                    time_out = response.time_out,
+                    "Received pong"
                 );
                 continue;
             }
 
             if msg_channel == Some(Channel::Heartbeat.as_str()) {
+                debug!("Received heartbeat");
                 continue;
             }
 
             if msg_channel == Some(Channel::Status.as_str()) {
                 let response: StatusUpdateResponse = serde_json::from_value(value)?;
-
-                println!("[{}][{}]", response.channel, response.tpe);
                 for status in &response.data {
-                    println!(
-                        "  system: {} api: {} version: {} connection_id: {}",
-                        status.system, status.api_version, status.version, status.connection_id
+                    info!(
+                        channel = response.channel,
+                        msg_type = response.tpe,
+                        system = status.system,
+                        api_version = status.api_version,
+                        version = status.version,
+                        connection_id = status.connection_id,
+                        "Status update"
                     );
                 }
                 continue;
@@ -201,180 +173,133 @@ pub async fn process_messages(
 
             // Only process "update" messages; skip snapshots and other types.
             if msg_type != Some("update") {
+                debug!(msg_type = msg_type, "Skipping non-update message");
                 continue;
             }
 
-            if msg_channel == Some(Channel::Ticker.as_str()) && ticker_count < limits.ticker {
-                let response: TickerUpdateResponse = serde_json::from_value(value)?;
-
-                println!("[{}][{}]", response.channel, response.tpe);
-                for tick in &response.data {
-                    println!(
-                        "  [{}] bid: {} ({}) ask: {} ({}) last: {} vol: {} vwap: {} low: {} high: {} change: {} ({:.2}%)",
-                        tick.symbol,
-                        tick.bid,
-                        tick.bid_qty,
-                        tick.ask,
-                        tick.ask_qty,
-                        tick.last,
-                        tick.volume,
-                        tick.vwap,
-                        tick.low,
-                        tick.high,
-                        tick.change,
-                        tick.change_pct
-                    );
-                }
-
-                ticker_count += 1;
-                println!("Ticker tick {}/{}", ticker_count, limits.ticker);
-
-                // Auto-unsubscribe once the limit is reached.
-                if ticker_count >= limits.ticker {
-                    unsubscribe(write, &Channel::Ticker, symbol).await?;
-                }
-            } else if msg_channel == Some(Channel::Book.as_str()) && book_count < limits.book {
-                let response: BookUpdateResponse = serde_json::from_value(value)?;
-
-                println!("[{}][{}]", response.channel, response.tpe);
-                for entry in &response.data {
-                    println!(
-                        "  [{}] checksum: {} timestamp: {}",
-                        entry.symbol, entry.checksum, entry.timestamp
-                    );
-                    for bid in &entry.bids {
-                        println!("    bid: {} qty: {}", bid.price, bid.qty);
-                    }
-                    for ask in &entry.asks {
-                        println!("    ask: {} qty: {}", ask.price, ask.qty);
-                    }
-                }
-
-                book_count += 1;
-                println!("Book tick {}/{}", book_count, limits.book);
-
-                if book_count >= limits.book {
-                    unsubscribe(write, &Channel::Book, symbol).await?;
-                }
-            } else if msg_channel == Some(Channel::Candles.as_str()) && candle_count < limits.candle
-            {
-                let response: CandleUpdateResponse = serde_json::from_value(value)?;
-
-                println!(
-                    "[{}][{}] {}",
-                    response.channel, response.tpe, response.timestamp
-                );
-                for candle in &response.data {
-                    println!(
-                        "  [{}] O: {} H: {} L: {} C: {} vwap: {} vol: {} trades: {} interval: {} begin: {} end: {}",
-                        candle.symbol,
-                        candle.open,
-                        candle.high,
-                        candle.low,
-                        candle.close,
-                        candle.vwap,
-                        candle.volume,
-                        candle.trades,
-                        candle.interval,
-                        candle.interval_begin,
-                        candle.timestamp
-                    );
-                }
-
-                candle_count += 1;
-                println!("Candle tick {}/{}", candle_count, limits.candle);
-
-                if candle_count >= limits.candle {
-                    unsubscribe(write, &Channel::Candles, symbol).await?;
-                }
-            } else if msg_channel == Some(Channel::Trades.as_str()) && trade_count < limits.trade {
-                let response: TradeUpdateResponse = serde_json::from_value(value)?;
-
-                println!("[{}][{}]", response.channel, response.tpe);
-                for trade in &response.data {
-                    println!(
-                        "  [{}] {} {} @ {} qty: {} type: {} id: {} ts: {}",
-                        trade.symbol,
-                        trade.side,
-                        trade.ord_type,
-                        trade.price,
-                        trade.qty,
-                        trade.ord_type,
-                        trade.trade_id,
-                        trade.timestamp
-                    );
-                }
-
-                trade_count += 1;
-                println!("Trade tick {}/{}", trade_count, limits.trade);
-
-                if trade_count >= limits.trade {
-                    unsubscribe(write, &Channel::Trades, symbol).await?;
-                }
-            } else if msg_channel == Some(Channel::Instruments.as_str())
-                && instrument_count < limits.instrument
-            {
-                let response: InstrumentUpdateResponse = serde_json::from_value(value)?;
-
-                println!("[{}][{}]", response.channel, response.tpe);
-                println!(
-                    "  assets: {} pairs: {}",
-                    response.data.assets.len(),
-                    response.data.pairs.len()
-                );
-                for asset in &response.data.assets {
-                    println!(
-                        "  [asset] {} status: {} precision: {} display: {} borrowable: {} collateral: {} margin_rate: {}",
-                        asset.id,
-                        asset.status,
-                        asset.precision,
-                        asset.precision_display,
-                        asset.borrowable,
-                        asset.collateral_value,
-                        asset.margin_rate
-                    );
-                }
-                for pair in &response.data.pairs {
-                    println!(
-                        "  [pair] {} {}/{} status: {} qty_prec: {} qty_inc: {} price_prec: {} price_inc: {} cost_prec: {} cost_min: {} qty_min: {} marginable: {} has_index: {}",
-                        pair.symbol,
-                        pair.base,
-                        pair.quote,
-                        pair.status,
-                        pair.qty_precision,
-                        pair.qty_increment,
-                        pair.price_precision,
-                        pair.price_increment,
-                        pair.cost_precision,
-                        pair.cost_min,
-                        pair.qty_min,
-                        pair.marginable,
-                        pair.has_index
-                    );
-                    if let Some(margin) = pair.margin_initial {
-                        println!(
-                            "    margin_initial: {} long_limit: {:?} short_limit: {:?}",
-                            margin, pair.position_limit_long, pair.position_limit_short
+            match msg_channel {
+                Some(ch) if ch == Channel::Ticker.as_str() => {
+                    let response: TickerUpdateResponse = serde_json::from_value(value)?;
+                    for tick in &response.data {
+                        info!(
+                            channel = response.channel,
+                            symbol = tick.symbol,
+                            bid = %tick.bid,
+                            bid_qty = %tick.bid_qty,
+                            ask = %tick.ask,
+                            ask_qty = %tick.ask_qty,
+                            last = %tick.last,
+                            volume = %tick.volume,
+                            vwap = %tick.vwap,
+                            low = %tick.low,
+                            high = %tick.high,
+                            change = %tick.change,
+                            change_pct = %tick.change_pct,
+                            "Ticker update"
                         );
                     }
                 }
-
-                instrument_count += 1;
-                println!("Instrument tick {}/{}", instrument_count, limits.instrument);
-
-                if instrument_count >= limits.instrument {
-                    unsubscribe_instrument(write).await?;
+                Some(ch) if ch == Channel::Book.as_str() => {
+                    let response: BookUpdateResponse = serde_json::from_value(value)?;
+                    for entry in &response.data {
+                        info!(
+                            channel = response.channel,
+                            symbol = entry.symbol,
+                            checksum = entry.checksum,
+                            timestamp = entry.timestamp,
+                            bids = entry.bids.len(),
+                            asks = entry.asks.len(),
+                            "Book update"
+                        );
+                        for bid in &entry.bids {
+                            debug!(price = %bid.price, qty = %bid.qty, "Bid");
+                        }
+                        for ask in &entry.asks {
+                            debug!(price = %ask.price, qty = %ask.qty, "Ask");
+                        }
+                    }
                 }
-            }
-
-            // Exit once all channel limits have been reached.
-            if ticker_count >= limits.ticker
-                && book_count >= limits.book
-                && candle_count >= limits.candle
-                && trade_count >= limits.trade
-                && instrument_count >= limits.instrument
-            {
-                break;
+                Some(ch) if ch == Channel::Candles.as_str() => {
+                    let response: CandleUpdateResponse = serde_json::from_value(value)?;
+                    for candle in &response.data {
+                        info!(
+                            channel = response.channel,
+                            symbol = candle.symbol,
+                            open = %candle.open,
+                            high = %candle.high,
+                            low = %candle.low,
+                            close = %candle.close,
+                            vwap = %candle.vwap,
+                            volume = %candle.volume,
+                            trades = candle.trades,
+                            interval = candle.interval,
+                            interval_begin = candle.interval_begin,
+                            timestamp = candle.timestamp,
+                            "Candle update"
+                        );
+                    }
+                }
+                Some(ch) if ch == Channel::Trades.as_str() => {
+                    let response: TradeUpdateResponse = serde_json::from_value(value)?;
+                    for trade in &response.data {
+                        info!(
+                            channel = response.channel,
+                            symbol = trade.symbol,
+                            side = trade.side,
+                            price = %trade.price,
+                            qty = %trade.qty,
+                            ord_type = trade.ord_type,
+                            trade_id = trade.trade_id,
+                            timestamp = trade.timestamp,
+                            "Trade update"
+                        );
+                    }
+                }
+                Some(ch) if ch == Channel::Instruments.as_str() => {
+                    let response: InstrumentUpdateResponse = serde_json::from_value(value)?;
+                    info!(
+                        channel = response.channel,
+                        assets = response.data.assets.len(),
+                        pairs = response.data.pairs.len(),
+                        "Instrument update"
+                    );
+                    for asset in &response.data.assets {
+                        debug!(
+                            id = asset.id,
+                            status = asset.status,
+                            precision = asset.precision,
+                            precision_display = asset.precision_display,
+                            borrowable = asset.borrowable,
+                            collateral_value = %asset.collateral_value,
+                            margin_rate = %asset.margin_rate,
+                            "Asset"
+                        );
+                    }
+                    for pair in &response.data.pairs {
+                        debug!(
+                            symbol = pair.symbol,
+                            base = pair.base,
+                            quote = pair.quote,
+                            status = pair.status,
+                            qty_precision = pair.qty_precision,
+                            qty_increment = %pair.qty_increment,
+                            price_precision = pair.price_precision,
+                            price_increment = %pair.price_increment,
+                            cost_precision = pair.cost_precision,
+                            cost_min = %pair.cost_min,
+                            qty_min = %pair.qty_min,
+                            marginable = pair.marginable,
+                            has_index = pair.has_index,
+                            "Pair"
+                        );
+                    }
+                }
+                Some(ch) => {
+                    warn!(channel = ch, "Unknown channel");
+                }
+                None => {
+                    warn!("Message missing channel field");
+                }
             }
         }
     }

@@ -1,6 +1,6 @@
 //! Serialization tests for WebSocket request types and Channel enum.
 
-use leeson::models::{Channel, Params, PingRequest, SubscribeRequest, UnsubscribeRequest};
+use leeson::models::{Channel, PingRequest, SubscribeRequest, UnsubscribeRequest};
 
 #[test]
 fn test_channel_as_str_returns_correct_wire_names() {
@@ -16,9 +16,7 @@ fn test_channel_as_str_returns_correct_wire_names() {
 
 #[test]
 fn test_ping_request_serializes() {
-    let request = PingRequest {
-        method: "ping".to_string(),
-    };
+    let request = PingRequest::new();
 
     let json = serde_json::to_string(&request).expect("Failed to serialize ping request");
     let value: serde_json::Value =
@@ -29,13 +27,8 @@ fn test_ping_request_serializes() {
 
 #[test]
 fn test_subscribe_request_serializes() {
-    let request = SubscribeRequest {
-        method: "subscribe".to_string(),
-        params: Params {
-            channel: "ticker".to_string(),
-            symbol: vec!["BTC/USD".to_string(), "ETH/USD".to_string()],
-        },
-    };
+    let symbols = vec!["BTC/USD".to_string(), "ETH/USD".to_string()];
+    let request = SubscribeRequest::new(&Channel::Ticker, &symbols);
 
     let json = serde_json::to_string(&request).expect("Failed to serialize subscribe request");
     let value: serde_json::Value =
@@ -49,13 +42,8 @@ fn test_subscribe_request_serializes() {
 
 #[test]
 fn test_unsubscribe_request_serializes() {
-    let request = UnsubscribeRequest {
-        method: "unsubscribe".to_string(),
-        params: Params {
-            channel: "book".to_string(),
-            symbol: vec!["BTC/USD".to_string()],
-        },
-    };
+    let symbols = vec!["BTC/USD".to_string()];
+    let request = UnsubscribeRequest::new(&Channel::Book, &symbols);
 
     let json = serde_json::to_string(&request).expect("Failed to serialize unsubscribe request");
     let value: serde_json::Value =
@@ -69,13 +57,8 @@ fn test_unsubscribe_request_serializes() {
 #[test]
 fn test_subscribe_request_with_channel_enum() {
     let channel = Channel::Ticker;
-    let request = SubscribeRequest {
-        method: "subscribe".to_string(),
-        params: Params {
-            channel: channel.as_str().to_string(),
-            symbol: vec!["BTC/USD".to_string()],
-        },
-    };
+    let symbols = vec!["BTC/USD".to_string()];
+    let request = SubscribeRequest::new(&channel, &symbols);
 
     let json = serde_json::to_string(&request).expect("Failed to serialize subscribe request");
     let value: serde_json::Value =

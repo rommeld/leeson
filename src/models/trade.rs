@@ -1,9 +1,10 @@
 //! Trade channel models.
 
+use rust_decimal::Decimal;
 use serde::Deserialize;
 
 /// An update message from the `trade` channel.
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct TradeUpdateResponse {
     pub channel: String,
     #[serde(rename = "type")]
@@ -12,13 +13,13 @@ pub struct TradeUpdateResponse {
 }
 
 /// A single executed trade.
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct TradeData {
     pub symbol: String,
     /// Trade direction: `"buy"` or `"sell"`.
     pub side: String,
-    pub price: f64,
-    pub qty: f64,
+    pub price: Decimal,
+    pub qty: Decimal,
     /// Order type that triggered this trade (e.g., `"market"`, `"limit"`).
     pub ord_type: String,
     pub trade_id: u64,

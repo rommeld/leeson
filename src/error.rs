@@ -21,4 +21,8 @@ pub enum LeesonError {
     /// JSON serialization or deserialization failed.
     #[error("json error: {0}")]
     Json(#[from] serde_json::Error),
+
+    /// A received WebSocket message could not be parsed as valid JSON.
+    #[error("malformed message: {0}")]
+    MalformedMessage(String),
 }
