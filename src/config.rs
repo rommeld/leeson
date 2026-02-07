@@ -19,12 +19,13 @@ pub struct KrakenConfig {
 ///
 /// # Errors
 ///
-/// Returns [`config::ConfigError`] if the configuration file is missing,
-/// malformed, or cannot be deserialized into [`AppConfig`].
-pub fn fetch_config() -> Result<AppConfig, config::ConfigError> {
+/// Returns [`LeesonError::Config`](crate::LeesonError::Config) if the
+/// configuration file is missing, malformed, or cannot be deserialized
+/// into [`AppConfig`].
+pub fn fetch_config() -> crate::Result<AppConfig> {
     let config = Config::builder()
         .add_source(config::File::with_name("./config/config.toml").required(true))
         .build()?;
 
-    config.try_deserialize::<AppConfig>()
+    Ok(config.try_deserialize::<AppConfig>()?)
 }
