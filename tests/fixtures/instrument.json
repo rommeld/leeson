@@ -1,0 +1,61 @@
+{
+  "channel": "instrument",
+  "type": "update",
+  "data": {
+    "assets": [
+      {
+        "id": "BTC",
+        "status": "enabled",
+        "precision": 10,
+        "precision_display": 5,
+        "borrowable": true,
+        "collateral_value": 0.95,
+        "margin_rate": 0.02
+      },
+      {
+        "id": "USD",
+        "status": "enabled",
+        "precision": 4,
+        "precision_display": 2,
+        "borrowable": true,
+        "collateral_value": 1.0,
+        "margin_rate": 0.0
+      }
+    ],
+    "pairs": [
+      {
+        "symbol": "BTC/USD",
+        "base": "BTC",
+        "quote": "USD",
+        "status": "online",
+        "qty_precision": 8,
+        "qty_increment": 0.00000001,
+        "price_precision": 1,
+        "price_increment": 0.1,
+        "cost_precision": 5,
+        "cost_min": "0.5",
+        "qty_min": 0.0001,
+        "marginable": true,
+        "margin_initial": 0.2,
+        "position_limit_long": 100,
+        "position_limit_short": 100,
+        "has_index": true
+      },
+      {
+        "symbol": "ETH/USD",
+        "base": "ETH",
+        "quote": "USD",
+        "status": "online",
+        "qty_precision": 8,
+        "qty_increment": 0.00000001,
+        "price_precision": 2,
+        "price_increment": 0.01,
+        "cost_precision": 5,
+        "cost_min": "0.5",
+        "qty_min": 0.001,
+        "marginable": false,
+        "has_index": false
+      }
+    ]
+  }
+}

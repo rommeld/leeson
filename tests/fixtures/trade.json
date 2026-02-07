@@ -1,0 +1,15 @@
+{
+  "channel": "trade",
+  "type": "update",
+  "data": [
+    {
+      "symbol": "BTC/USD",
+      "side": "buy",
+      "price": 42152.0,
+      "qty": 0.5,
+      "ord_type": "market",
+      "trade_id": 987654321,
+      "timestamp": "2024-01-15T10:30:00.123456Z"
+    }
+  ]
+}

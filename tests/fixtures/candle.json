@@ -1,0 +1,20 @@
+{
+  "channel": "ohlc",
+  "type": "update",
+  "timestamp": "2024-01-15T10:30:00.000000Z",
+  "data": [
+    {
+      "symbol": "BTC/USD",
+      "open": 42100.0,
+      "high": 42200.0,
+      "low": 42050.0,
+      "close": 42152.0,
+      "vwap": 42125.5,
+      "trades": 150,
+      "volume": 25.5,
+      "interval_begin": "2024-01-15T10:00:00.000000Z",
+      "interval": 1,
+      "timestamp": "2024-01-15T10:30:00.000000Z"
+    }
+  ]
+}
