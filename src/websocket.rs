@@ -7,7 +7,8 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::connect_async;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tungstenite::Message;
-use tungstenite::Result;
+
+use crate::Result;
 
 use crate::models::book::BookUpdateResponse;
 use crate::models::candle::CandleUpdateResponse;
@@ -29,7 +30,7 @@ pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 ///
 /// # Errors
 ///
-/// Returns a [`tungstenite::Error`] if the connection or TLS handshake fails.
+/// Returns a [`LeesonError`](crate::LeesonError) if the connection or TLS handshake fails.
 pub async fn connect(url: String) -> Result<(WsWriter, WsReader)> {
     let (ws_stream, _) = connect_async(&url).await?;
     println!("Handshake successfully completed.");
@@ -41,13 +42,13 @@ pub async fn connect(url: String) -> Result<(WsWriter, WsReader)> {
 ///
 /// # Errors
 ///
-/// Returns a [`tungstenite::Error`] if sending the message fails.
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the message fails.
 pub async fn ping(write: &mut WsWriter) -> Result<()> {
     let request = PingRequest {
         method: "ping".to_string(),
     };
 
-    let json = serde_json::to_string(&request).expect("Failed to serialize ping message.");
+    let json = serde_json::to_string(&request)?;
     write.send(Message::Text(json.into())).await?;
 
     Ok(())
@@ -57,7 +58,7 @@ pub async fn ping(write: &mut WsWriter) -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns a [`tungstenite::Error`] if sending the subscription message fails.
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the subscription message fails.
 pub async fn subscribe(write: &mut WsWriter, channel: &Channel, symbol: &[String]) -> Result<()> {
     let request = SubscribeRequest {
         method: "subscribe".to_string(),
@@ -67,7 +68,7 @@ pub async fn subscribe(write: &mut WsWriter, channel: &Channel, symbol: &[String
         },
     };
 
-    let json = serde_json::to_string(&request).expect("Failed to serialize subscribe message.");
+    let json = serde_json::to_string(&request)?;
     write.send(Message::Text(json.into())).await?;
     println!("Subscribed to {} channel.", channel.as_str());
 
@@ -78,13 +79,12 @@ pub async fn subscribe(write: &mut WsWriter, channel: &Channel, symbol: &[String
 ///
 /// # Errors
 ///
-/// Returns a [`tungstenite::Error`] if sending the subscription message fails.
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the subscription message fails.
 pub async fn subscribe_instrument(write: &mut WsWriter) -> Result<()> {
     let json = serde_json::to_string(&serde_json::json!({
         "method": "subscribe",
         "params": { "channel": Channel::Instruments.as_str() }
-    }))
-    .expect("Failed to serialize subscribe message.");
+    }))?;
     write.send(Message::Text(json.into())).await?;
     println!("Subscribed to {} channel.", Channel::Instruments.as_str());
 
@@ -95,13 +95,12 @@ pub async fn subscribe_instrument(write: &mut WsWriter) -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns a [`tungstenite::Error`] if sending the unsubscribe message fails.
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the unsubscribe message fails.
 pub async fn unsubscribe_instrument(write: &mut WsWriter) -> Result<()> {
     let json = serde_json::to_string(&serde_json::json!({
         "method": "unsubscribe",
         "params": { "channel": Channel::Instruments.as_str() }
-    }))
-    .expect("Failed to serialize unsubscribe message.");
+    }))?;
     write.send(Message::Text(json.into())).await?;
     println!(
         "Unsubscribed from {} channel.",
@@ -115,7 +114,7 @@ pub async fn unsubscribe_instrument(write: &mut WsWriter) -> Result<()> {
 ///
 /// # Errors
 ///
-/// Returns a [`tungstenite::Error`] if sending the unsubscribe message fails.
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the unsubscribe message fails.
 pub async fn unsubscribe(write: &mut WsWriter, channel: &Channel, symbol: &[String]) -> Result<()> {
     let request = UnsubscribeRequest {
         method: "unsubscribe".to_string(),
@@ -125,7 +124,7 @@ pub async fn unsubscribe(write: &mut WsWriter, channel: &Channel, symbol: &[Stri
         },
     };
 
-    let json = serde_json::to_string(&request).expect("Failed to serialize unsubscribe message.");
+    let json = serde_json::to_string(&request)?;
     write.send(Message::Text(json.into())).await?;
     println!("Unsubscribed from {} channel.", channel.as_str());
 
@@ -141,13 +140,9 @@ pub async fn unsubscribe(write: &mut WsWriter, channel: &Channel, symbol: &[Stri
 ///
 /// # Errors
 ///
-/// Returns a [`tungstenite::Error`] if reading from or writing to the
-/// WebSocket fails.
-///
-/// # Panics
-///
-/// Panics if a received message cannot be deserialized into the expected
-/// response type (via `.expect()`).
+/// Returns a [`LeesonError`](crate::LeesonError) if reading from or
+/// writing to the WebSocket fails, or if a message cannot be
+/// deserialized into the expected response type.
 pub async fn process_messages(
     write: &mut WsWriter,
     read: &mut WsReader,
@@ -167,7 +162,10 @@ pub async fn process_messages(
         if let Message::Text(text) = msg {
             let value: serde_json::Value = match serde_json::from_str(&text) {
                 Ok(v) => v,
-                Err(_) => continue,
+                Err(e) => {
+                    eprintln!("skipping malformed message: {e}");
+                    continue;
+                }
             };
 
             let msg_method = value.get("method").and_then(|m| m.as_str());
@@ -175,8 +173,7 @@ pub async fn process_messages(
             let msg_channel = value.get("channel").and_then(|c| c.as_str());
 
             if msg_method == Some("pong") {
-                let response: PongResponse =
-                    serde_json::from_value(value).expect("Failed to deserialize pong response.");
+                let response: PongResponse = serde_json::from_value(value)?;
 
                 println!(
                     "[{}] time_in: {} time_out: {}",
@@ -190,8 +187,7 @@ pub async fn process_messages(
             }
 
             if msg_channel == Some(Channel::Status.as_str()) {
-                let response: StatusUpdateResponse =
-                    serde_json::from_value(value).expect("Failed to deserialize status update.");
+                let response: StatusUpdateResponse = serde_json::from_value(value)?;
 
                 println!("[{}][{}]", response.channel, response.tpe);
                 for status in &response.data {
@@ -209,8 +205,7 @@ pub async fn process_messages(
             }
 
             if msg_channel == Some(Channel::Ticker.as_str()) && ticker_count < limits.ticker {
-                let response: TickerUpdateResponse =
-                    serde_json::from_value(value).expect("Failed to deserialize ticker update.");
+                let response: TickerUpdateResponse = serde_json::from_value(value)?;
 
                 println!("[{}][{}]", response.channel, response.tpe);
                 for tick in &response.data {
@@ -239,8 +234,7 @@ pub async fn process_messages(
                     unsubscribe(write, &Channel::Ticker, symbol).await?;
                 }
             } else if msg_channel == Some(Channel::Book.as_str()) && book_count < limits.book {
-                let response: BookUpdateResponse =
-                    serde_json::from_value(value).expect("Failed to deserialize book update.");
+                let response: BookUpdateResponse = serde_json::from_value(value)?;
 
                 println!("[{}][{}]", response.channel, response.tpe);
                 for entry in &response.data {
@@ -264,8 +258,7 @@ pub async fn process_messages(
                 }
             } else if msg_channel == Some(Channel::Candles.as_str()) && candle_count < limits.candle
             {
-                let response: CandleUpdateResponse =
-                    serde_json::from_value(value).expect("Failed to deserialize candle update.");
+                let response: CandleUpdateResponse = serde_json::from_value(value)?;
 
                 println!(
                     "[{}][{}] {}",
@@ -295,8 +288,7 @@ pub async fn process_messages(
                     unsubscribe(write, &Channel::Candles, symbol).await?;
                 }
             } else if msg_channel == Some(Channel::Trades.as_str()) && trade_count < limits.trade {
-                let response: TradeUpdateResponse =
-                    serde_json::from_value(value).expect("Failed to deserialize trade update.");
+                let response: TradeUpdateResponse = serde_json::from_value(value)?;
 
                 println!("[{}][{}]", response.channel, response.tpe);
                 for trade in &response.data {
@@ -322,8 +314,7 @@ pub async fn process_messages(
             } else if msg_channel == Some(Channel::Instruments.as_str())
                 && instrument_count < limits.instrument
             {
-                let response: InstrumentUpdateResponse = serde_json::from_value(value)
-                    .expect("Failed to deserialize instrument update.");
+                let response: InstrumentUpdateResponse = serde_json::from_value(value)?;
 
                 println!("[{}][{}]", response.channel, response.tpe);
                 println!(
