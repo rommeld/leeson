@@ -1,3 +1,6 @@
+//! Async WebSocket client for connecting to and interacting with the
+//! Kraken WebSocket V2 API.
+
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
@@ -16,9 +19,17 @@ use crate::models::{
     SubscribeRequest, UnsubscribeRequest,
 };
 
+/// Write half of a Kraken WebSocket connection.
 pub type WsWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Message>;
+
+/// Read half of a Kraken WebSocket connection.
 pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
+/// Establishes a WebSocket connection to the given URL.
+///
+/// # Errors
+///
+/// Returns a [`tungstenite::Error`] if the connection or TLS handshake fails.
 pub async fn connect(url: String) -> Result<(WsWriter, WsReader)> {
     let (ws_stream, _) = connect_async(&url).await?;
     println!("Handshake successfully completed.");
@@ -26,6 +37,11 @@ pub async fn connect(url: String) -> Result<(WsWriter, WsReader)> {
     Ok(ws_stream.split())
 }
 
+/// Sends a ping message over the WebSocket to test connection liveness.
+///
+/// # Errors
+///
+/// Returns a [`tungstenite::Error`] if sending the message fails.
 pub async fn ping(write: &mut WsWriter) -> Result<()> {
     let request = PingRequest {
         method: "ping".to_string(),
@@ -37,6 +53,11 @@ pub async fn ping(write: &mut WsWriter) -> Result<()> {
     Ok(())
 }
 
+/// Subscribes to a symbol-based channel (e.g., ticker, book, trades).
+///
+/// # Errors
+///
+/// Returns a [`tungstenite::Error`] if sending the subscription message fails.
 pub async fn subscribe(write: &mut WsWriter, channel: &Channel, symbol: &[String]) -> Result<()> {
     let request = SubscribeRequest {
         method: "subscribe".to_string(),
@@ -53,6 +74,11 @@ pub async fn subscribe(write: &mut WsWriter, channel: &Channel, symbol: &[String
     Ok(())
 }
 
+/// Subscribes to the instrument channel (no symbol parameter required).
+///
+/// # Errors
+///
+/// Returns a [`tungstenite::Error`] if sending the subscription message fails.
 pub async fn subscribe_instrument(write: &mut WsWriter) -> Result<()> {
     let json = serde_json::to_string(&serde_json::json!({
         "method": "subscribe",
@@ -65,6 +91,11 @@ pub async fn subscribe_instrument(write: &mut WsWriter) -> Result<()> {
     Ok(())
 }
 
+/// Unsubscribes from the instrument channel.
+///
+/// # Errors
+///
+/// Returns a [`tungstenite::Error`] if sending the unsubscribe message fails.
 pub async fn unsubscribe_instrument(write: &mut WsWriter) -> Result<()> {
     let json = serde_json::to_string(&serde_json::json!({
         "method": "unsubscribe",
@@ -80,6 +111,11 @@ pub async fn unsubscribe_instrument(write: &mut WsWriter) -> Result<()> {
     Ok(())
 }
 
+/// Unsubscribes from a symbol-based channel.
+///
+/// # Errors
+///
+/// Returns a [`tungstenite::Error`] if sending the unsubscribe message fails.
 pub async fn unsubscribe(write: &mut WsWriter, channel: &Channel, symbol: &[String]) -> Result<()> {
     let request = UnsubscribeRequest {
         method: "unsubscribe".to_string(),
@@ -96,12 +132,29 @@ pub async fn unsubscribe(write: &mut WsWriter, channel: &Channel, symbol: &[Stri
     Ok(())
 }
 
+/// Reads and dispatches incoming WebSocket messages until all channel
+/// limits are reached.
+///
+/// For each channel, up to `limits.<channel>` update messages are processed
+/// and printed. Once a channel's limit is reached, it is automatically
+/// unsubscribed. The function returns when every channel has hit its limit.
+///
+/// # Errors
+///
+/// Returns a [`tungstenite::Error`] if reading from or writing to the
+/// WebSocket fails.
+///
+/// # Panics
+///
+/// Panics if a received message cannot be deserialized into the expected
+/// response type (via `.expect()`).
 pub async fn process_messages(
     write: &mut WsWriter,
     read: &mut WsReader,
     symbol: &[String],
     limits: &ChannelLimits,
 ) -> Result<()> {
+    // Per-channel counters tracking how many updates have been received.
     let mut ticker_count = 0;
     let mut book_count = 0;
     let mut candle_count = 0;
@@ -150,6 +203,7 @@ pub async fn process_messages(
                 continue;
             }
 
+            // Only process "update" messages; skip snapshots and other types.
             if msg_type != Some("update") {
                 continue;
             }
@@ -180,6 +234,7 @@ pub async fn process_messages(
                 ticker_count += 1;
                 println!("Ticker tick {}/{}", ticker_count, limits.ticker);
 
+                // Auto-unsubscribe once the limit is reached.
                 if ticker_count >= limits.ticker {
                     unsubscribe(write, &Channel::Ticker, symbol).await?;
                 }
@@ -321,6 +376,7 @@ pub async fn process_messages(
                 }
             }
 
+            // Exit once all channel limits have been reached.
             if ticker_count >= limits.ticker
                 && book_count >= limits.book
                 && candle_count >= limits.candle

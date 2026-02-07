@@ -1,3 +1,8 @@
+//! Shared models for Kraken WebSocket V2 messages.
+//!
+//! Contains channel definitions, subscription request/response types,
+//! and common protocol messages (ping/pong, heartbeat, status).
+
 pub mod book;
 pub mod candle;
 pub mod instrument;
@@ -7,12 +12,13 @@ pub mod trade;
 
 use serde::{Deserialize, Serialize};
 
-// --- Channel ---
-
+/// Available Kraken WebSocket V2 channels.
 pub enum Channel {
     Book,
     Ticker,
+    /// Level-3 individual orders (wire name: `"level3"`).
     Orders,
+    /// OHLC candlestick data (wire name: `"ohlc"`).
     Candles,
     Trades,
     Instruments,
@@ -21,6 +27,7 @@ pub enum Channel {
 }
 
 impl Channel {
+    /// Returns the wire-format channel name expected by the Kraken API.
     pub fn as_str(&self) -> &'static str {
         match self {
             Channel::Book => "book",
@@ -35,8 +42,8 @@ impl Channel {
     }
 }
 
-// --- Channel limits ---
-
+/// Per-channel message limits controlling how many updates to collect
+/// before automatically unsubscribing.
 pub struct ChannelLimits {
     pub ticker: usize,
     pub book: usize,
@@ -45,33 +52,34 @@ pub struct ChannelLimits {
     pub instrument: usize,
 }
 
-// --- Subscribe / Unsubscribe ---
-
+/// A `subscribe` request sent to the Kraken WebSocket API.
 #[derive(Serialize)]
 pub struct SubscribeRequest {
     pub method: String,
     pub params: Params,
 }
 
+/// An `unsubscribe` request sent to the Kraken WebSocket API.
 #[derive(Serialize)]
 pub struct UnsubscribeRequest {
     pub method: String,
     pub params: Params,
 }
 
+/// Channel and symbol parameters used in subscribe/unsubscribe requests.
 #[derive(Serialize)]
 pub struct Params {
     pub channel: String,
     pub symbol: Vec<String>,
 }
 
-// --- Ping / Pong ---
-
+/// A `ping` request used to test connection liveness.
 #[derive(Serialize)]
 pub struct PingRequest {
     pub method: String,
 }
 
+/// Server response to a [`PingRequest`].
 #[derive(Deserialize)]
 pub struct PongResponse {
     pub method: String,
@@ -79,15 +87,13 @@ pub struct PongResponse {
     pub time_out: String,
 }
 
-// --- Heartbeat ---
-
+/// Periodic heartbeat message indicating the connection is alive.
 #[derive(Deserialize)]
 pub struct HeartbeatResponse {
     pub channel: String,
 }
 
-// --- Status ---
-
+/// System status update broadcast on the `status` channel.
 #[derive(Deserialize)]
 pub struct StatusUpdateResponse {
     pub channel: String,
@@ -96,6 +102,7 @@ pub struct StatusUpdateResponse {
     pub data: Vec<StatusData>,
 }
 
+/// Detailed system status information.
 #[derive(Deserialize)]
 pub struct StatusData {
     pub api_version: String,
