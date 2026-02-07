@@ -25,4 +25,8 @@ pub enum LeesonError {
     /// A received WebSocket message could not be parsed as valid JSON.
     #[error("malformed message: {0}")]
     MalformedMessage(String),
+
+    /// An HTTP request (e.g. fetching a WebSocket token) failed.
+    #[error("http error: {0}")]
+    Http(#[from] reqwest::Error),
 }

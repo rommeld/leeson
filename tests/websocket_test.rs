@@ -28,7 +28,7 @@ fn test_ping_request_serializes() {
 #[test]
 fn test_subscribe_request_serializes() {
     let symbols = vec!["BTC/USD".to_string(), "ETH/USD".to_string()];
-    let request = SubscribeRequest::new(&Channel::Ticker, &symbols);
+    let request = SubscribeRequest::new(&Channel::Ticker, &symbols, None);
 
     let json = serde_json::to_string(&request).expect("Failed to serialize subscribe request");
     let value: serde_json::Value =
@@ -38,12 +38,13 @@ fn test_subscribe_request_serializes() {
     assert_eq!(value["params"]["channel"], "ticker");
     assert_eq!(value["params"]["symbol"][0], "BTC/USD");
     assert_eq!(value["params"]["symbol"][1], "ETH/USD");
+    assert!(value["params"].get("token").is_none());
 }
 
 #[test]
 fn test_unsubscribe_request_serializes() {
     let symbols = vec!["BTC/USD".to_string()];
-    let request = UnsubscribeRequest::new(&Channel::Book, &symbols);
+    let request = UnsubscribeRequest::new(&Channel::Book, &symbols, None);
 
     let json = serde_json::to_string(&request).expect("Failed to serialize unsubscribe request");
     let value: serde_json::Value =
@@ -58,11 +59,30 @@ fn test_unsubscribe_request_serializes() {
 fn test_subscribe_request_with_channel_enum() {
     let channel = Channel::Ticker;
     let symbols = vec!["BTC/USD".to_string()];
-    let request = SubscribeRequest::new(&channel, &symbols);
+    let request = SubscribeRequest::new(&channel, &symbols, None);
 
     let json = serde_json::to_string(&request).expect("Failed to serialize subscribe request");
     let value: serde_json::Value =
         serde_json::from_str(&json).expect("Failed to parse serialized JSON");
 
     assert_eq!(value["params"]["channel"], "ticker");
+}
+
+#[test]
+fn test_subscribe_request_with_token_serializes() {
+    let symbols = vec!["BTC/USD".to_string()];
+    let request = SubscribeRequest::new(
+        &Channel::Orders,
+        &symbols,
+        Some("test-token-123".to_string()),
+    );
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize subscribe request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "subscribe");
+    assert_eq!(value["params"]["channel"], "level3");
+    assert_eq!(value["params"]["symbol"][0], "BTC/USD");
+    assert_eq!(value["params"]["token"], "test-token-123");
 }
