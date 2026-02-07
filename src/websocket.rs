@@ -9,12 +9,13 @@ use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use tracing::{debug, info, warn};
 use tungstenite::Message;
 
-use crate::error::LeesonError;
 use crate::Result;
+use crate::error::LeesonError;
 
 use crate::models::book::BookUpdateResponse;
 use crate::models::candle::CandleUpdateResponse;
 use crate::models::instrument::InstrumentUpdateResponse;
+use crate::models::orders::OrdersUpdateResponse;
 use crate::models::ticker::TickerUpdateResponse;
 use crate::models::trade::TradeUpdateResponse;
 use crate::models::{
@@ -55,11 +56,18 @@ pub async fn ping(write: &mut WsWriter) -> Result<()> {
 
 /// Subscribes to a symbol-based channel (e.g., ticker, book, trades).
 ///
+/// Pass a `token` for authenticated channels like `level3` (orders).
+///
 /// # Errors
 ///
 /// Returns a [`LeesonError`](crate::LeesonError) if sending the subscription message fails.
-pub async fn subscribe(write: &mut WsWriter, channel: &Channel, symbols: &[String]) -> Result<()> {
-    let request = SubscribeRequest::new(channel, symbols);
+pub async fn subscribe(
+    write: &mut WsWriter,
+    channel: &Channel,
+    symbols: &[String],
+    token: Option<&str>,
+) -> Result<()> {
+    let request = SubscribeRequest::new(channel, symbols, token.map(String::from));
     let json = serde_json::to_string(&request)?;
     write.send(Message::Text(json.into())).await?;
     info!(channel = channel.as_str(), "Subscribed to channel");
@@ -78,7 +86,10 @@ pub async fn subscribe_instrument(write: &mut WsWriter) -> Result<()> {
         "params": { "channel": Channel::Instruments.as_str() }
     }))?;
     write.send(Message::Text(json.into())).await?;
-    info!(channel = Channel::Instruments.as_str(), "Subscribed to channel");
+    info!(
+        channel = Channel::Instruments.as_str(),
+        "Subscribed to channel"
+    );
 
     Ok(())
 }
@@ -94,12 +105,17 @@ pub async fn unsubscribe_instrument(write: &mut WsWriter) -> Result<()> {
         "params": { "channel": Channel::Instruments.as_str() }
     }))?;
     write.send(Message::Text(json.into())).await?;
-    info!(channel = Channel::Instruments.as_str(), "Unsubscribed from channel");
+    info!(
+        channel = Channel::Instruments.as_str(),
+        "Unsubscribed from channel"
+    );
 
     Ok(())
 }
 
 /// Unsubscribes from a symbol-based channel.
+///
+/// Pass a `token` for authenticated channels like `level3` (orders).
 ///
 /// # Errors
 ///
@@ -108,8 +124,9 @@ pub async fn unsubscribe(
     write: &mut WsWriter,
     channel: &Channel,
     symbols: &[String],
+    token: Option<&str>,
 ) -> Result<()> {
-    let request = UnsubscribeRequest::new(channel, symbols);
+    let request = UnsubscribeRequest::new(channel, symbols, token.map(String::from));
     let json = serde_json::to_string(&request)?;
     write.send(Message::Text(json.into())).await?;
     info!(channel = channel.as_str(), "Unsubscribed from channel");
@@ -292,6 +309,40 @@ pub async fn process_messages(read: &mut WsReader) -> Result<()> {
                             has_index = pair.has_index,
                             "Pair"
                         );
+                    }
+                }
+                Some(ch) if ch == Channel::Orders.as_str() => {
+                    let response: OrdersUpdateResponse = serde_json::from_value(value)?;
+                    for entry in &response.data {
+                        info!(
+                            channel = response.channel,
+                            symbol = entry.symbol,
+                            checksum = entry.checksum,
+                            timestamp = entry.timestamp,
+                            bids = entry.bids.len(),
+                            asks = entry.asks.len(),
+                            "Orders update"
+                        );
+                        for order in &entry.bids {
+                            debug!(
+                                event = order.event,
+                                order_id = order.order_id,
+                                limit_price = %order.limit_price,
+                                order_qty = %order.order_qty,
+                                timestamp = order.timestamp,
+                                "Order bid"
+                            );
+                        }
+                        for order in &entry.asks {
+                            debug!(
+                                event = order.event,
+                                order_id = order.order_id,
+                                limit_price = %order.limit_price,
+                                order_qty = %order.order_qty,
+                                timestamp = order.timestamp,
+                                "Order ask"
+                            );
+                        }
                     }
                 }
                 Some(ch) => {
