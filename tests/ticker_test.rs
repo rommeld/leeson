@@ -1,3 +1,5 @@
+use rust_decimal_macros::dec;
+
 use leeson::models::ticker::{TickerData, TickerUpdateResponse};
 
 #[test]
@@ -31,17 +33,17 @@ fn deserialize_ticker_update_response() {
 
     let tick = &response.data[0];
     assert_eq!(tick.symbol, "BTC/USD");
-    assert_eq!(tick.bid, 42150.50);
-    assert_eq!(tick.bid_qty, 1.25);
-    assert_eq!(tick.ask, 42155.00);
-    assert_eq!(tick.ask_qty, 0.75);
-    assert_eq!(tick.last, 42152.30);
-    assert_eq!(tick.volume, 1234.56789);
-    assert_eq!(tick.vwap, 42000.12);
-    assert_eq!(tick.low, 41500.00);
-    assert_eq!(tick.high, 42800.00);
-    assert_eq!(tick.change, 652.30);
-    assert_eq!(tick.change_pct, 1.57);
+    assert_eq!(tick.bid, dec!(42150.50));
+    assert_eq!(tick.bid_qty, dec!(1.25));
+    assert_eq!(tick.ask, dec!(42155.00));
+    assert_eq!(tick.ask_qty, dec!(0.75));
+    assert_eq!(tick.last, dec!(42152.30));
+    assert_eq!(tick.volume, dec!(1234.56789));
+    assert_eq!(tick.vwap, dec!(42000.12));
+    assert_eq!(tick.low, dec!(41500.00));
+    assert_eq!(tick.high, dec!(42800.00));
+    assert_eq!(tick.change, dec!(652.30));
+    assert_eq!(tick.change_pct, dec!(1.57));
 }
 
 #[test]
@@ -64,8 +66,8 @@ fn deserialize_ticker_data_directly() {
     let tick: TickerData = serde_json::from_str(json).unwrap();
 
     assert_eq!(tick.symbol, "ETH/USD");
-    assert_eq!(tick.change, -15.45);
-    assert_eq!(tick.change_pct, -0.68);
+    assert_eq!(tick.change, dec!(-15.45));
+    assert_eq!(tick.change_pct, dec!(-0.68));
 }
 
 #[test]

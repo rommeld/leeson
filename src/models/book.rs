@@ -1,9 +1,10 @@
 //! Order book channel models.
 
+use rust_decimal::Decimal;
 use serde::Deserialize;
 
 /// An update message from the `book` channel.
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct BookUpdateResponse {
     pub channel: String,
     #[serde(rename = "type")]
@@ -12,7 +13,7 @@ pub struct BookUpdateResponse {
 }
 
 /// Order book snapshot or incremental update for a single trading pair.
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct BookData {
     pub symbol: String,
     pub bids: Vec<PriceLevel>,
@@ -23,8 +24,8 @@ pub struct BookData {
 }
 
 /// A single price level in the order book.
-#[derive(Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct PriceLevel {
-    pub price: f64,
-    pub qty: f64,
+    pub price: Decimal,
+    pub qty: Decimal,
 }

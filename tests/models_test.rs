@@ -1,5 +1,7 @@
 //! Deserialization tests for all Kraken WebSocket V2 model types.
 
+use rust_decimal_macros::dec;
+
 use leeson::models::book::{BookData, BookUpdateResponse, PriceLevel};
 use leeson::models::candle::{CandleData, CandleUpdateResponse};
 use leeson::models::instrument::{AssetInfo, InstrumentData, InstrumentUpdateResponse, PairInfo};
@@ -29,17 +31,17 @@ fn test_ticker_update_response_deserializes() {
 
     let ticker: &TickerData = &response.data[0];
     assert_eq!(ticker.symbol, "BTC/USD");
-    assert_eq!(ticker.bid, 42150.5);
-    assert_eq!(ticker.bid_qty, 1.25);
-    assert_eq!(ticker.ask, 42155.0);
-    assert_eq!(ticker.ask_qty, 0.75);
-    assert_eq!(ticker.last, 42152.0);
-    assert_eq!(ticker.volume, 1250.5);
-    assert_eq!(ticker.vwap, 42100.25);
-    assert_eq!(ticker.low, 41800.0);
-    assert_eq!(ticker.high, 42500.0);
-    assert_eq!(ticker.change, 352.0);
-    assert_eq!(ticker.change_pct, 0.84);
+    assert_eq!(ticker.bid, dec!(42150.5));
+    assert_eq!(ticker.bid_qty, dec!(1.25));
+    assert_eq!(ticker.ask, dec!(42155.0));
+    assert_eq!(ticker.ask_qty, dec!(0.75));
+    assert_eq!(ticker.last, dec!(42152.0));
+    assert_eq!(ticker.volume, dec!(1250.5));
+    assert_eq!(ticker.vwap, dec!(42100.25));
+    assert_eq!(ticker.low, dec!(41800.0));
+    assert_eq!(ticker.high, dec!(42500.0));
+    assert_eq!(ticker.change, dec!(352.0));
+    assert_eq!(ticker.change_pct, dec!(0.84));
 }
 
 #[test]
@@ -58,13 +60,13 @@ fn test_book_update_response_deserializes() {
 
     assert_eq!(book.bids.len(), 2);
     let bid: &PriceLevel = &book.bids[0];
-    assert_eq!(bid.price, 42150.0);
-    assert_eq!(bid.qty, 1.5);
+    assert_eq!(bid.price, dec!(42150.0));
+    assert_eq!(bid.qty, dec!(1.5));
 
     assert_eq!(book.asks.len(), 2);
     let ask: &PriceLevel = &book.asks[0];
-    assert_eq!(ask.price, 42155.0);
-    assert_eq!(ask.qty, 0.75);
+    assert_eq!(ask.price, dec!(42155.0));
+    assert_eq!(ask.qty, dec!(0.75));
 }
 
 #[test]
@@ -79,8 +81,8 @@ fn test_trade_update_response_deserializes() {
     let trade: &TradeData = &response.data[0];
     assert_eq!(trade.symbol, "BTC/USD");
     assert_eq!(trade.side, "buy");
-    assert_eq!(trade.price, 42152.0);
-    assert_eq!(trade.qty, 0.5);
+    assert_eq!(trade.price, dec!(42152.0));
+    assert_eq!(trade.qty, dec!(0.5));
     assert_eq!(trade.ord_type, "market");
     assert_eq!(trade.trade_id, 987654321);
     assert_eq!(trade.timestamp, "2024-01-15T10:30:00.123456Z");
@@ -98,13 +100,13 @@ fn test_candle_update_response_deserializes() {
 
     let candle: &CandleData = &response.data[0];
     assert_eq!(candle.symbol, "BTC/USD");
-    assert_eq!(candle.open, 42100.0);
-    assert_eq!(candle.high, 42200.0);
-    assert_eq!(candle.low, 42050.0);
-    assert_eq!(candle.close, 42152.0);
-    assert_eq!(candle.vwap, 42125.5);
+    assert_eq!(candle.open, dec!(42100.0));
+    assert_eq!(candle.high, dec!(42200.0));
+    assert_eq!(candle.low, dec!(42050.0));
+    assert_eq!(candle.close, dec!(42152.0));
+    assert_eq!(candle.vwap, dec!(42125.5));
     assert_eq!(candle.trades, 150);
-    assert_eq!(candle.volume, 25.5);
+    assert_eq!(candle.volume, dec!(25.5));
     assert_eq!(candle.interval_begin, "2024-01-15T10:00:00.000000Z");
     assert_eq!(candle.interval, 1);
 }
@@ -128,8 +130,8 @@ fn test_instrument_update_response_deserializes() {
     assert_eq!(btc.precision, 10);
     assert_eq!(btc.precision_display, 5);
     assert!(btc.borrowable);
-    assert_eq!(btc.collateral_value, 0.95);
-    assert_eq!(btc.margin_rate, 0.02);
+    assert_eq!(btc.collateral_value, dec!(0.95));
+    assert_eq!(btc.margin_rate, dec!(0.02));
 
     // Test pair with optional margin fields
     let btc_usd: &PairInfo = &data.pairs[0];
@@ -138,7 +140,7 @@ fn test_instrument_update_response_deserializes() {
     assert_eq!(btc_usd.quote, "USD");
     assert_eq!(btc_usd.status, "online");
     assert!(btc_usd.marginable);
-    assert_eq!(btc_usd.margin_initial, Some(0.2));
+    assert_eq!(btc_usd.margin_initial, Some(dec!(0.2)));
     assert_eq!(btc_usd.position_limit_long, Some(100));
     assert_eq!(btc_usd.position_limit_short, Some(100));
     assert!(btc_usd.has_index);
@@ -172,8 +174,8 @@ fn test_orders_update_response_deserializes() {
     let add_order: &OrderEntry = &orders.bids[0];
     assert_eq!(add_order.event, Some("add".to_string()));
     assert_eq!(add_order.order_id, "O123ABC");
-    assert_eq!(add_order.limit_price, 42150.0);
-    assert_eq!(add_order.order_qty, 1.5);
+    assert_eq!(add_order.limit_price, dec!(42150.0));
+    assert_eq!(add_order.order_qty, dec!(1.5));
 
     // Test bid with "modify" event
     let modify_order: &OrderEntry = &orders.bids[1];
@@ -185,7 +187,7 @@ fn test_orders_update_response_deserializes() {
     let delete_order: &OrderEntry = &orders.asks[0];
     assert_eq!(delete_order.event, Some("delete".to_string()));
     assert_eq!(delete_order.order_id, "O789GHI");
-    assert_eq!(delete_order.order_qty, 0.0);
+    assert_eq!(delete_order.order_qty, dec!(0.0));
 }
 
 #[test]
