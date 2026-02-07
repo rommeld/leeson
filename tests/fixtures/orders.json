@@ -1,0 +1,36 @@
+{
+  "channel": "level3",
+  "type": "update",
+  "data": [
+    {
+      "symbol": "BTC/USD",
+      "bids": [
+        {
+          "event": "add",
+          "order_id": "O123ABC",
+          "limit_price": 42150.0,
+          "order_qty": 1.5,
+          "timestamp": "2024-01-15T10:30:00.123456Z"
+        },
+        {
+          "event": "modify",
+          "order_id": "O456DEF",
+          "limit_price": 42149.0,
+          "order_qty": 2.0,
+          "timestamp": "2024-01-15T10:30:00.234567Z"
+        }
+      ],
+      "asks": [
+        {
+          "event": "delete",
+          "order_id": "O789GHI",
+          "limit_price": 42155.0,
+          "order_qty": 0.0,
+          "timestamp": "2024-01-15T10:30:00.345678Z"
+        }
+      ],
+      "checksum": 9876543210,
+      "timestamp": "2024-01-15T10:30:00.123456Z"
+    }
+  ]
+}

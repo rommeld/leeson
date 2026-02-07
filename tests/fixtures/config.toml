@@ -1,0 +1,2 @@
+[kraken]
+websocket_url = "wss://ws.kraken.com/v2"
