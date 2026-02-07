@@ -13,6 +13,8 @@ pub struct AppConfig {
 #[derive(Deserialize)]
 pub struct KrakenConfig {
     pub websocket_url: String,
+    pub api_key: Option<String>,
+    pub api_secret: Option<String>,
 }
 
 /// Loads and deserializes the application configuration from disk.

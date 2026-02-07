@@ -44,31 +44,6 @@ impl Channel {
     }
 }
 
-/// Per-channel message limits controlling how many updates to collect
-/// before automatically unsubscribing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChannelLimits {
-    pub ticker: usize,
-    pub book: usize,
-    pub candle: usize,
-    pub trade: usize,
-    pub instrument: usize,
-}
-
-impl ChannelLimits {
-    /// Creates a new `ChannelLimits` with the specified limits for each channel.
-    #[must_use]
-    pub fn new(ticker: usize, book: usize, candle: usize, trade: usize, instrument: usize) -> Self {
-        Self {
-            ticker,
-            book,
-            candle,
-            trade,
-            instrument,
-        }
-    }
-}
-
 /// A `subscribe` request sent to the Kraken WebSocket API.
 #[derive(Debug, Clone, Serialize)]
 pub struct SubscribeRequest {
@@ -77,12 +52,12 @@ pub struct SubscribeRequest {
 }
 
 impl SubscribeRequest {
-    /// Creates a new subscribe request for the given channel and symbols.
+    /// Creates a new subscribe request for the given channel, symbols, and optional auth token.
     #[must_use]
-    pub fn new(channel: &Channel, symbols: &[String]) -> Self {
+    pub fn new(channel: &Channel, symbols: &[String], token: Option<String>) -> Self {
         Self {
             method: "subscribe".to_string(),
-            params: Params::new(channel, symbols),
+            params: Params::new(channel, symbols, token),
         }
     }
 }
@@ -95,12 +70,12 @@ pub struct UnsubscribeRequest {
 }
 
 impl UnsubscribeRequest {
-    /// Creates a new unsubscribe request for the given channel and symbols.
+    /// Creates a new unsubscribe request for the given channel, symbols, and optional auth token.
     #[must_use]
-    pub fn new(channel: &Channel, symbols: &[String]) -> Self {
+    pub fn new(channel: &Channel, symbols: &[String], token: Option<String>) -> Self {
         Self {
             method: "unsubscribe".to_string(),
-            params: Params::new(channel, symbols),
+            params: Params::new(channel, symbols, token),
         }
     }
 }
@@ -110,15 +85,77 @@ impl UnsubscribeRequest {
 pub struct Params {
     channel: String,
     symbol: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<String>,
 }
 
 impl Params {
-    /// Creates new parameters for the given channel and symbols.
+    /// Creates new parameters for the given channel, symbols, and optional auth token.
     #[must_use]
-    pub fn new(channel: &Channel, symbols: &[String]) -> Self {
+    pub fn new(channel: &Channel, symbols: &[String], token: Option<String>) -> Self {
         Self {
             channel: channel.as_str().to_string(),
             symbol: symbols.to_vec(),
+            token,
+        }
+    }
+}
+
+/// Parameters for book channel subscription with depth option.
+#[derive(Debug, Clone, Serialize)]
+pub struct BookParams {
+    channel: String,
+    symbol: Vec<String>,
+    depth: u16,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    token: Option<String>,
+}
+
+impl BookParams {
+    /// Creates new book parameters for the given symbols and depth.
+    #[must_use]
+    pub fn new(symbols: &[String], depth: book::BookDepth, token: Option<String>) -> Self {
+        Self {
+            channel: Channel::Book.as_str().to_string(),
+            symbol: symbols.to_vec(),
+            depth: depth.as_u16(),
+            token,
+        }
+    }
+}
+
+/// A `subscribe` request for the book channel with depth parameter.
+#[derive(Debug, Clone, Serialize)]
+pub struct BookSubscribeRequest {
+    method: String,
+    params: BookParams,
+}
+
+impl BookSubscribeRequest {
+    /// Creates a new book subscribe request with the specified depth.
+    #[must_use]
+    pub fn new(symbols: &[String], depth: book::BookDepth, token: Option<String>) -> Self {
+        Self {
+            method: "subscribe".to_string(),
+            params: BookParams::new(symbols, depth, token),
+        }
+    }
+}
+
+/// An `unsubscribe` request for the book channel with depth parameter.
+#[derive(Debug, Clone, Serialize)]
+pub struct BookUnsubscribeRequest {
+    method: String,
+    params: BookParams,
+}
+
+impl BookUnsubscribeRequest {
+    /// Creates a new book unsubscribe request with the specified depth.
+    #[must_use]
+    pub fn new(symbols: &[String], depth: book::BookDepth) -> Self {
+        Self {
+            method: "unsubscribe".to_string(),
+            params: BookParams::new(symbols, depth, None),
         }
     }
 }
