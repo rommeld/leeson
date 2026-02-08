@@ -599,7 +599,7 @@ mod tests {
 
     #[test]
     fn serialize_limit_order() {
-        let params = AddOrderBuilder::limit(OrderSide::Sell, "ETH/USD", dec!(1.5), dec!(2500.00))
+        let params = AddOrderBuilder::limit(OrderSide::Sell, "ETH/USD", dec!(1.5), dec!(2500))
             .with_time_in_force(TimeInForce::Gtc)
             .with_post_only(true)
             .build("test_token")
@@ -618,7 +618,7 @@ mod tests {
 
     #[test]
     fn serialize_stop_loss_order() {
-        let trigger = TriggerParams::new(TriggerReference::Last, dec!(40000.00));
+        let trigger = TriggerParams::new(TriggerReference::Last, dec!(40000));
         let params = AddOrderBuilder::stop_loss(OrderSide::Sell, "BTC/USD", dec!(0.5), trigger)
             .build("test_token")
             .unwrap();
@@ -636,7 +636,10 @@ mod tests {
         let result = AddOrderBuilder::new(OrderType::Limit, OrderSide::Buy, "BTC/USD", dec!(1.0))
             .build("token");
 
-        assert_eq!(result, Err(AddOrderError::MissingLimitPrice(OrderType::Limit)));
+        assert!(matches!(
+            result,
+            Err(AddOrderError::MissingLimitPrice(OrderType::Limit))
+        ));
     }
 
     #[test]
@@ -644,7 +647,10 @@ mod tests {
         let result = AddOrderBuilder::new(OrderType::StopLoss, OrderSide::Sell, "BTC/USD", dec!(1.0))
             .build("token");
 
-        assert_eq!(result, Err(AddOrderError::MissingTriggers(OrderType::StopLoss)));
+        assert!(matches!(
+            result,
+            Err(AddOrderError::MissingTriggers(OrderType::StopLoss))
+        ));
     }
 
     #[test]
@@ -653,7 +659,7 @@ mod tests {
             .with_time_in_force(TimeInForce::Gtd)
             .build("token");
 
-        assert_eq!(result, Err(AddOrderError::MissingExpireTime));
+        assert!(matches!(result, Err(AddOrderError::MissingExpireTime)));
     }
 
     #[test]
@@ -662,7 +668,7 @@ mod tests {
             .with_display_qty(dec!(0.1))
             .build("token");
 
-        assert_eq!(result, Err(AddOrderError::InvalidDisplayQty));
+        assert!(matches!(result, Err(AddOrderError::InvalidDisplayQty)));
     }
 
     #[test]
@@ -707,9 +713,9 @@ mod tests {
         let params = AddOrderBuilder::iceberg(
             OrderSide::Buy,
             "BTC/USD",
-            dec!(10.0),
+            dec!(10),
             dec!(50000),
-            dec!(1.0),
+            dec!(1),
         )
         .build("token")
         .unwrap();
