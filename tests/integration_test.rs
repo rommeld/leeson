@@ -15,15 +15,13 @@ use common::KRAKEN_WS_URL;
 
 #[tokio::test]
 async fn test_connect_to_kraken_websocket() {
-    let result = connect(KRAKEN_WS_URL.to_string()).await;
+    let result = connect(KRAKEN_WS_URL).await;
     assert!(result.is_ok(), "Failed to connect to Kraken WebSocket");
 }
 
 #[tokio::test]
 async fn test_ping_pong() {
-    let (mut write, mut read) = connect(KRAKEN_WS_URL.to_string())
-        .await
-        .expect("Failed to connect");
+    let (mut write, mut read) = connect(KRAKEN_WS_URL).await.expect("Failed to connect");
 
     // Send ping
     ping(&mut write).await.expect("Failed to send ping");
@@ -46,14 +44,12 @@ async fn test_ping_pong() {
 
 #[tokio::test]
 async fn test_subscribe_and_receive_ticker() {
-    let (mut write, mut read) = connect(KRAKEN_WS_URL.to_string())
-        .await
-        .expect("Failed to connect");
+    let (mut write, mut read) = connect(KRAKEN_WS_URL).await.expect("Failed to connect");
 
     let symbols = vec!["BTC/USD".to_string()];
 
     // Subscribe to ticker
-    subscribe(&mut write, &Channel::Ticker, &symbols)
+    subscribe(&mut write, &Channel::Ticker, &symbols, None)
         .await
         .expect("Failed to subscribe to ticker");
 
@@ -73,21 +69,19 @@ async fn test_subscribe_and_receive_ticker() {
     assert!(received_ticker, "Did not receive ticker message");
 
     // Clean up: unsubscribe
-    unsubscribe(&mut write, &Channel::Ticker, &symbols)
+    unsubscribe(&mut write, &Channel::Ticker, &symbols, None)
         .await
         .expect("Failed to unsubscribe from ticker");
 }
 
 #[tokio::test]
 async fn test_subscribe_and_receive_book() {
-    let (mut write, mut read) = connect(KRAKEN_WS_URL.to_string())
-        .await
-        .expect("Failed to connect");
+    let (mut write, mut read) = connect(KRAKEN_WS_URL).await.expect("Failed to connect");
 
     let symbols = vec!["BTC/USD".to_string()];
 
     // Subscribe to book
-    subscribe(&mut write, &Channel::Book, &symbols)
+    subscribe(&mut write, &Channel::Book, &symbols, None)
         .await
         .expect("Failed to subscribe to book");
 
@@ -107,7 +101,7 @@ async fn test_subscribe_and_receive_book() {
     assert!(received_book, "Did not receive book message");
 
     // Clean up: unsubscribe
-    unsubscribe(&mut write, &Channel::Book, &symbols)
+    unsubscribe(&mut write, &Channel::Book, &symbols, None)
         .await
         .expect("Failed to unsubscribe from book");
 }

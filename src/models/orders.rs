@@ -7,6 +7,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 pub struct OrdersUpdateResponse {
     pub channel: String,
+    /// Message type (e.g., `"snapshot"` or `"update"`).
     #[serde(rename = "type")]
     pub tpe: String,
     pub data: Vec<OrdersData>,
@@ -16,8 +17,11 @@ pub struct OrdersUpdateResponse {
 #[derive(Debug, Clone, Deserialize)]
 pub struct OrdersData {
     pub symbol: String,
+    /// Bid (buy) side individual orders.
     pub bids: Vec<OrderEntry>,
+    /// Ask (sell) side individual orders.
     pub asks: Vec<OrderEntry>,
+    /// Checksum for verifying order book integrity.
     pub checksum: u64,
     pub timestamp: String,
 }

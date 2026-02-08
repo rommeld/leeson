@@ -1,8 +1,9 @@
 //! Serialization tests for WebSocket request types and Channel enum.
 
 use leeson::models::{
-    CancelOrderBuilder, CancelOrderResponse, Channel, ExecutionsSubscribeRequest,
-    ExecutionsUnsubscribeRequest, PingRequest, SubscribeRequest, UnsubscribeRequest,
+    CancelAllRequest, CancelAllResponse, CancelOrderBuilder, CancelOrderResponse, Channel,
+    ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, PingRequest, SubscribeRequest,
+    UnsubscribeRequest,
 };
 
 #[test]
@@ -245,4 +246,71 @@ fn test_cancel_order_response_with_warnings_deserializes() {
     assert_eq!(warnings.len(), 2);
     assert_eq!(warnings[0], "Deprecated field used");
     assert_eq!(warnings[1], "Another warning");
+}
+
+#[test]
+fn test_cancel_all_request_serializes() {
+    let request = CancelAllRequest::new("ws-token-123", Some(1234567890));
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize cancel_all request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "cancel_all");
+    assert_eq!(value["req_id"], 1234567890);
+    assert_eq!(value["params"]["token"], "ws-token-123");
+}
+
+#[test]
+fn test_cancel_all_request_without_req_id_serializes() {
+    let request = CancelAllRequest::new("ws-token-123", None);
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize cancel_all request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "cancel_all");
+    assert!(value.get("req_id").is_none());
+}
+
+#[test]
+fn test_cancel_all_success_response_deserializes() {
+    let json = r#"{
+        "method": "cancel_all",
+        "req_id": 1234567890,
+        "result": {
+            "count": 5
+        },
+        "success": true,
+        "time_in": "2023-09-26T13:09:48.463201Z",
+        "time_out": "2023-09-26T13:09:48.471419Z"
+    }"#;
+
+    let response: CancelAllResponse =
+        serde_json::from_str(json).expect("Failed to deserialize cancel_all response");
+
+    assert_eq!(response.method, "cancel_all");
+    assert!(response.success);
+    assert_eq!(response.req_id, Some(1234567890));
+    assert!(response.result.is_some());
+    assert_eq!(response.result.unwrap().count, 5);
+}
+
+#[test]
+fn test_cancel_all_error_response_deserializes() {
+    let json = r#"{
+        "method": "cancel_all",
+        "success": false,
+        "error": "EGeneral:Permission denied",
+        "time_in": "2023-09-26T13:09:48.463201Z",
+        "time_out": "2023-09-26T13:09:48.471419Z"
+    }"#;
+
+    let response: CancelAllResponse =
+        serde_json::from_str(json).expect("Failed to deserialize cancel_all error response");
+
+    assert_eq!(response.method, "cancel_all");
+    assert!(!response.success);
+    assert_eq!(response.error, Some("EGeneral:Permission denied".to_string()));
+    assert!(response.result.is_none());
 }

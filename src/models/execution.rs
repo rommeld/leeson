@@ -10,8 +10,10 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExecutionUpdateResponse {
     pub channel: String,
+    /// Message type (e.g., `"snapshot"` or `"update"`).
     #[serde(rename = "type")]
     pub tpe: String,
+    /// Monotonically increasing sequence number for ordering.
     pub sequence: i64,
     pub data: Vec<ExecutionData>,
 }

@@ -6,6 +6,7 @@
 pub mod add_order;
 pub mod amend_order;
 pub mod book;
+pub mod cancel_all;
 pub mod cancel_order;
 pub mod candle;
 pub mod execution;
@@ -23,6 +24,7 @@ pub use amend_order::{
     AmendOrderBuilder, AmendOrderError, AmendOrderParams, AmendOrderRequest, AmendOrderResponse,
     AmendOrderResult, PriceType,
 };
+pub use cancel_all::{CancelAllRequest, CancelAllResponse, CancelAllResult};
 pub use cancel_order::{
     CancelOrderBuilder, CancelOrderError, CancelOrderParams, CancelOrderRequest,
     CancelOrderResponse, CancelOrderResult,
@@ -289,6 +291,7 @@ pub struct HeartbeatResponse {
 #[derive(Debug, Clone, Deserialize)]
 pub struct StatusUpdateResponse {
     pub channel: String,
+    /// Message type (e.g., `"snapshot"` or `"update"`).
     #[serde(rename = "type")]
     pub tpe: String,
     pub data: Vec<StatusData>,
@@ -297,8 +300,12 @@ pub struct StatusUpdateResponse {
 /// Detailed system status information.
 #[derive(Debug, Clone, Deserialize)]
 pub struct StatusData {
+    /// API version (e.g., `"v2"`).
     pub api_version: String,
+    /// Unique identifier for this WebSocket connection.
     pub connection_id: u64,
+    /// System status (e.g., `"online"`, `"maintenance"`).
     pub system: String,
+    /// Server software version.
     pub version: String,
 }

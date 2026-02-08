@@ -7,6 +7,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 pub struct InstrumentUpdateResponse {
     pub channel: String,
+    /// Message type (e.g., `"snapshot"` or `"update"`).
     #[serde(rename = "type")]
     pub tpe: String,
     pub data: InstrumentData,

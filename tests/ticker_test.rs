@@ -1,3 +1,5 @@
+//! Deserialization tests for the ticker channel models.
+
 use rust_decimal_macros::dec;
 
 use leeson::models::ticker::{TickerData, TickerUpdateResponse};

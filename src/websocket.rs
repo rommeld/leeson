@@ -20,9 +20,10 @@ use crate::models::orders::OrdersUpdateResponse;
 use crate::models::ticker::TickerUpdateResponse;
 use crate::models::trade::TradeUpdateResponse;
 use crate::models::{
-    AddOrderRequest, AddOrderResponse, AmendOrderRequest, AmendOrderResponse, CancelOrderRequest,
-    CancelOrderResponse, Channel, ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest,
-    PingRequest, PongResponse, StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
+    AddOrderRequest, AddOrderResponse, AmendOrderRequest, AmendOrderResponse, CancelAllRequest,
+    CancelAllResponse, CancelOrderRequest, CancelOrderResponse, Channel,
+    ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, PingRequest, PongResponse,
+    StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
 };
 
 /// Write half of a Kraken WebSocket connection.
@@ -216,6 +217,26 @@ pub async fn cancel_order(write: &mut WsWriter, request: CancelOrderRequest) -> 
     Ok(())
 }
 
+/// Sends a cancel_all request to cancel all open orders.
+///
+/// This cancels all orders including untriggered orders and orders resting
+/// in the book. The response is handled in [`process_messages`].
+///
+/// # Errors
+///
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the request fails.
+pub async fn cancel_all(write: &mut WsWriter, request: CancelAllRequest) -> Result<()> {
+    let json = serde_json::to_string(&request)?;
+    write.send(Message::Text(json.into())).await?;
+    info!(
+        method = "cancel_all",
+        req_id = ?request.req_id(),
+        "Sent cancel_all request"
+    );
+
+    Ok(())
+}
+
 /// Sends an amend_order request to modify an existing order in-place.
 ///
 /// This is an RPC-style request that receives a single response indicating
@@ -310,6 +331,28 @@ pub async fn process_messages(read: &mut WsReader) -> Result<()> {
                         error = ?response.error,
                         req_id = ?response.req_id,
                         "Order cancellation failed"
+                    );
+                }
+                continue;
+            }
+
+            if msg_method == Some("cancel_all") {
+                let response: CancelAllResponse = serde_json::from_value(value)?;
+                if response.success {
+                    if let Some(ref result) = response.result {
+                        info!(
+                            method = response.method,
+                            count = result.count,
+                            req_id = ?response.req_id,
+                            "All orders cancelled successfully"
+                        );
+                    }
+                } else {
+                    warn!(
+                        method = response.method,
+                        error = ?response.error,
+                        req_id = ?response.req_id,
+                        "Cancel all orders failed"
                     );
                 }
                 continue;

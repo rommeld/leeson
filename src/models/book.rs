@@ -7,6 +7,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Deserialize)]
 pub struct BookUpdateResponse {
     pub channel: String,
+    /// Message type (e.g., `"snapshot"` or `"update"`).
     #[serde(rename = "type")]
     pub tpe: String,
     pub data: Vec<BookData>,
@@ -16,7 +17,9 @@ pub struct BookUpdateResponse {
 #[derive(Debug, Clone, Deserialize)]
 pub struct BookData {
     pub symbol: String,
+    /// Bid (buy) side price levels, sorted highest to lowest.
     pub bids: Vec<PriceLevel>,
+    /// Ask (sell) side price levels, sorted lowest to highest.
     pub asks: Vec<PriceLevel>,
     /// CRC32 checksum used to verify order book integrity.
     pub checksum: u32,
