@@ -21,9 +21,10 @@ pub fn render(frame: &mut Frame, app: &App) {
         .constraints([
             Constraint::Length(1), // Tab bar
             Constraint::Length(1), // Status bar
-            Constraint::Min(8),    // Agent outputs
+            Constraint::Min(6),    // Agent outputs
             Constraint::Length(7), // Account overview
-            Constraint::Length(8), // Executed trades
+            Constraint::Length(7), // Open orders
+            Constraint::Length(7), // Executed trades
             Constraint::Length(5), // Pair selector
             Constraint::Length(3), // Agent input
             Constraint::Length(1), // Keybindings help
@@ -42,17 +43,20 @@ pub fn render(frame: &mut Frame, app: &App) {
     // Account overview
     render_account_overview(frame, main_layout[3], app);
 
+    // Open orders
+    render_open_orders(frame, main_layout[4], app);
+
     // Executed trades
-    render_executed_trades(frame, main_layout[4], app);
+    render_executed_trades(frame, main_layout[5], app);
 
     // Pair selector
-    render_pair_selector(frame, main_layout[5], app);
+    render_pair_selector(frame, main_layout[6], app);
 
     // Agent input
-    render_agent_input(frame, main_layout[6], app);
+    render_agent_input(frame, main_layout[7], app);
 
     // Keybindings help
-    render_keybindings(frame, main_layout[7], app);
+    render_keybindings(frame, main_layout[8], app);
 }
 
 /// Renders the three agent output panels.
@@ -101,7 +105,7 @@ fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &App) {
     }
 }
 
-/// Renders the account overview panel.
+/// Renders the account overview panel with asset balances.
 fn render_account_overview(frame: &mut Frame, area: Rect, app: &App) {
     let block = Block::default()
         .title(" Account Overview ")
@@ -116,35 +120,62 @@ fn render_account_overview(frame: &mut Frame, area: Rect, app: &App) {
         .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
         .split(inner);
 
-    // Left column: Balance, Equity, Margin
-    let left_text = vec![
-        Line::from(vec![
-            Span::raw("Balance: "),
-            Span::styled(
-                format!("${:.2}", app.balance),
-                Style::default().fg(Color::White),
-            ),
-        ]),
-        Line::from(vec![
-            Span::raw("Equity:  "),
-            Span::styled(
-                format!("${:.2}", app.equity),
-                Style::default().fg(Color::White),
-            ),
-        ]),
-        Line::from(vec![
-            Span::raw("Margin:  "),
-            Span::styled(
-                format!("${:.2}", app.margin_used),
-                Style::default().fg(Color::Yellow),
-            ),
-        ]),
-    ];
+    // Left column: Asset balances breakdown
+    let mut left_lines: Vec<Line> = Vec::new();
 
-    let left_para = Paragraph::new(left_text);
+    // Header
+    left_lines.push(Line::from(Span::styled(
+        format!(
+            "{:<8} {:>12} {:>10} {:>10}",
+            "Asset", "Total", "Spot", "Earn"
+        ),
+        Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::BOLD),
+    )));
+
+    // Sort assets: USD first, then alphabetically
+    let mut assets: Vec<_> = app.asset_balances.values().collect();
+    assets.sort_by(|a, b| {
+        if a.asset == "USD" {
+            std::cmp::Ordering::Less
+        } else if b.asset == "USD" {
+            std::cmp::Ordering::Greater
+        } else {
+            a.asset.cmp(&b.asset)
+        }
+    });
+
+    // Show up to 4 assets (limited by panel height)
+    for balance in assets.iter().take(4) {
+        let color = if balance.asset == "USD" {
+            Color::Cyan
+        } else {
+            Color::White
+        };
+
+        left_lines.push(Line::from(vec![
+            Span::styled(format!("{:<8} ", balance.asset), Style::default().fg(color)),
+            Span::styled(
+                format!("{:>12.4} ", balance.total),
+                Style::default().fg(color),
+            ),
+            Span::raw(format!("{:>10.4} ", balance.spot)),
+            Span::raw(format!("{:>10.4}", balance.earn)),
+        ]));
+    }
+
+    if app.asset_balances.is_empty() {
+        left_lines.push(Line::from(Span::styled(
+            "No balance data",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let left_para = Paragraph::new(left_lines);
     frame.render_widget(left_para, layout[0]);
 
-    // Right column: P&L Today, P&L Total, Open Positions
+    // Right column: P&L and positions
     let pnl_today_color = if app.pnl_today >= rust_decimal::Decimal::ZERO {
         Color::Green
     } else {
@@ -157,6 +188,7 @@ fn render_account_overview(frame: &mut Frame, area: Rect, app: &App) {
     };
 
     let open_positions: usize = app.open_orders.values().map(|v| v.len()).sum();
+    let total_assets = app.asset_balances.len();
 
     let right_text = vec![
         Line::from(vec![
@@ -180,10 +212,91 @@ fn render_account_overview(frame: &mut Frame, area: Rect, app: &App) {
                 Style::default().fg(Color::White),
             ),
         ]),
+        Line::from(vec![
+            Span::raw("Total Assets: "),
+            Span::styled(
+                format!("{}", total_assets),
+                Style::default().fg(Color::White),
+            ),
+        ]),
     ];
 
     let right_para = Paragraph::new(right_text);
     frame.render_widget(right_para, layout[1]);
+}
+
+/// Renders the open orders table (all pairs).
+fn render_open_orders(frame: &mut Frame, area: Rect, app: &App) {
+    let is_focused = app.focus == Focus::OpenOrdersAll;
+    let border_style = if is_focused {
+        Style::default().fg(Color::Cyan)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    let total_orders: usize = app.open_orders.values().map(|v| v.len()).sum();
+    let title = format!(" Open Orders ({}) ", total_orders);
+
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(border_style);
+
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+
+    // Header
+    let header = Line::from(vec![Span::styled(
+        format!(
+            "{:<10} {:<6} {:>10} {:>12}",
+            "Symbol", "Side", "Qty", "Price"
+        ),
+        Style::default().add_modifier(Modifier::BOLD),
+    )]);
+
+    let mut lines = vec![header];
+
+    // Collect all open orders across all symbols
+    let mut all_orders: Vec<_> = app
+        .open_orders
+        .iter()
+        .flat_map(|(symbol, orders)| orders.iter().map(move |o| (symbol, o)))
+        .collect();
+
+    // Sort by symbol
+    all_orders.sort_by(|a, b| a.0.cmp(b.0));
+
+    // Show orders (limited by panel height)
+    let max_rows = inner.height.saturating_sub(1) as usize;
+    for (symbol, order) in all_orders.iter().take(max_rows) {
+        let side_color = if order.side.to_uppercase() == "BUY" {
+            Color::Green
+        } else {
+            Color::Red
+        };
+
+        let price = order.limit_price.unwrap_or(rust_decimal::Decimal::ZERO);
+
+        lines.push(Line::from(vec![
+            Span::raw(format!("{:<10} ", symbol)),
+            Span::styled(
+                format!("{:<6} ", order.side.to_uppercase()),
+                Style::default().fg(side_color),
+            ),
+            Span::raw(format!("{:>10.4} ", order.order_qty)),
+            Span::raw(format!("{:>12.2}", price)),
+        ]));
+    }
+
+    if all_orders.is_empty() {
+        lines.push(Line::from(Span::styled(
+            "No open orders",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let para = Paragraph::new(lines);
+    frame.render_widget(para, inner);
 }
 
 /// Renders the executed trades table.

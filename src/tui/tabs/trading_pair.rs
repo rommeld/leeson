@@ -235,6 +235,23 @@ fn render_orderbook_depth(frame: &mut Frame, area: Rect, app: &App, symbol: &str
     frame.render_widget(para, area);
 }
 
+/// Extracts time portion (HH:MM:SS) from an RFC3339 timestamp.
+fn extract_time(timestamp: &str) -> &str {
+    // RFC3339 format: "2024-01-15T12:34:56.789Z" or "2024-01-15T12:34:56.789000Z"
+    // Extract the time portion after 'T' and before '.' or 'Z'
+    if let Some(t_pos) = timestamp.find('T') {
+        let after_t = &timestamp[t_pos + 1..];
+        // Find the end of HH:MM:SS (before milliseconds or timezone)
+        let end = after_t
+            .find('.')
+            .or_else(|| after_t.find('Z'))
+            .unwrap_or(after_t.len());
+        &after_t[..end.min(8)] // Cap at 8 chars for HH:MM:SS
+    } else {
+        timestamp
+    }
+}
+
 /// Renders the order book history table.
 fn render_orderbook_history(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
     let mut lines: Vec<Line> = Vec::new();
@@ -263,9 +280,8 @@ fn render_orderbook_history(frame: &mut Frame, area: Rect, app: &App, symbol: &s
         let history_iter: Vec<_> = ob.history.iter().rev().take(max_rows).collect();
 
         for (i, snapshot) in history_iter.iter().enumerate() {
-            // Calculate time ago in seconds
-            let elapsed = snapshot.timestamp.elapsed();
-            let time_str = format!("{:.1}s", elapsed.as_secs_f32());
+            // Extract time from RFC3339 timestamp
+            let time_str = extract_time(&snapshot.timestamp);
 
             // Calculate spread delta from next (previous in time) snapshot if available
             let spread_delta = if i + 1 < history_iter.len() {

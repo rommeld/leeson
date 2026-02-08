@@ -53,6 +53,8 @@ pub struct App {
     pub pnl_total: Decimal,
     /// All executed trades across all pairs.
     pub executed_trades_all: VecDeque<ExecutedTrade>,
+    /// Per-asset balances from the balances channel.
+    pub asset_balances: HashMap<String, AssetBalance>,
 
     // -- Per-Symbol Market Data --
     /// Latest ticker data per symbol.
@@ -131,6 +133,7 @@ impl App {
             pnl_today: Decimal::ZERO,
             pnl_total: Decimal::ZERO,
             executed_trades_all: VecDeque::with_capacity(MAX_HISTORY_SIZE),
+            asset_balances: HashMap::new(),
 
             tickers: HashMap::new(),
             orderbooks: HashMap::new(),
@@ -371,6 +374,7 @@ pub enum Focus {
     AgentOutput2,
     AgentOutput3,
     PairSelector,
+    OpenOrdersAll,
     ExecutedTradesAll,
 
     // Trading pair tab
@@ -429,8 +433,8 @@ pub struct OrderBookState {
 /// A historical snapshot of order book state.
 #[derive(Clone, Debug)]
 pub struct OrderBookSnapshot {
-    /// When this snapshot was taken.
-    pub timestamp: Instant,
+    /// Timestamp from the exchange (RFC3339 format).
+    pub timestamp: String,
     /// Best bid price at the time.
     pub best_bid: Decimal,
     /// Best ask price at the time.
@@ -463,4 +467,17 @@ pub struct ErrorDisplay {
     pub message: String,
     /// When the error was shown.
     pub timestamp: Instant,
+}
+
+/// Balance for a single asset.
+#[derive(Clone, Debug)]
+pub struct AssetBalance {
+    /// Asset symbol (e.g., "BTC", "USD").
+    pub asset: String,
+    /// Total balance across all wallets.
+    pub total: Decimal,
+    /// Balance in spot wallet.
+    pub spot: Decimal,
+    /// Balance in earn wallet.
+    pub earn: Decimal,
 }

@@ -24,6 +24,16 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         Span::styled(" No Auth ", Style::default().fg(Color::DarkGray))
     };
 
+    // Show USD balance if available
+    let balance_span = if let Some(usd) = app.asset_balances.get("USD") {
+        Span::styled(
+            format!(" ${:.2} ", usd.total),
+            Style::default().fg(Color::Cyan),
+        )
+    } else {
+        Span::raw("")
+    };
+
     let tab_info = format!(" {}/{} ", app.active_tab + 1, app.tabs.len());
 
     let error_span = if let Some(ref error) = app.error_message {
@@ -43,11 +53,13 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw("│"),
         auth_label,
         Span::raw("│"),
+        balance_span,
+        Span::raw("│"),
         error_span,
         Span::raw(format!(
             "{:>width$}",
             tab_info,
-            width = area.width.saturating_sub(30) as usize
+            width = area.width.saturating_sub(45) as usize
         )),
     ]);
 
