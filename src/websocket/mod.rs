@@ -29,8 +29,8 @@ use crate::models::PingRequest;
 pub use connection::{ConnectionCommand, ConnectionManager};
 pub use handler::process_messages;
 pub use subscription::{
-    subscribe, subscribe_book, subscribe_executions, subscribe_instrument, unsubscribe,
-    unsubscribe_executions, unsubscribe_instrument,
+    subscribe, subscribe_balances, subscribe_book, subscribe_executions, subscribe_instrument,
+    unsubscribe, unsubscribe_balances, unsubscribe_executions, unsubscribe_instrument,
 };
 pub use trading::{
     add_order, amend_order, batch_add, batch_cancel, cancel_after, cancel_all, cancel_order,

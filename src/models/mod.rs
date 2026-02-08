@@ -5,6 +5,7 @@
 
 pub mod add_order;
 pub mod amend_order;
+pub mod balance;
 pub mod batch_add;
 pub mod batch_cancel;
 pub mod book;
@@ -28,6 +29,7 @@ pub use amend_order::{
     AmendOrderBuilder, AmendOrderError, AmendOrderParams, AmendOrderRequest, AmendOrderResponse,
     AmendOrderResult, PriceType,
 };
+pub use balance::{BalanceData, BalanceResponse, BalanceUpdateData, WalletBalance};
 pub use batch_add::{
     BatchAddBuilder, BatchAddError, BatchAddOrderResult, BatchAddRequest, BatchAddResponse,
     BatchOrderEntry, MAX_BATCH_SIZE, MIN_BATCH_SIZE,
@@ -99,6 +101,8 @@ impl fmt::Display for RedactedToken {
 /// Available Kraken WebSocket V2 channels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Channel {
+    /// Account balances (authenticated).
+    Balances,
     Book,
     Ticker,
     /// Level-3 individual orders (wire name: `"level3"`).
@@ -118,6 +122,7 @@ impl Channel {
     #[must_use]
     pub fn as_str(&self) -> &'static str {
         match self {
+            Channel::Balances => "balances",
             Channel::Book => "book",
             Channel::Ticker => "ticker",
             Channel::Orders => "level3",
@@ -309,6 +314,73 @@ impl ExecutionsUnsubscribeRequest {
             method: "unsubscribe".to_string(),
             params: ExecutionsUnsubscribeParams {
                 channel: Channel::Executions.as_str().to_string(),
+                token: RedactedToken::new(token),
+            },
+        }
+    }
+}
+
+/// Parameters for balances channel subscription.
+#[derive(Debug, Clone, Serialize)]
+pub struct BalancesParams {
+    channel: String,
+    token: RedactedToken,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    snapshot: bool,
+}
+
+impl BalancesParams {
+    /// Creates new balances parameters.
+    #[must_use]
+    pub fn new(token: &str, snapshot: bool) -> Self {
+        Self {
+            channel: Channel::Balances.as_str().to_string(),
+            token: RedactedToken::new(token),
+            snapshot,
+        }
+    }
+}
+
+/// A `subscribe` request for the balances channel.
+#[derive(Debug, Clone, Serialize)]
+pub struct BalancesSubscribeRequest {
+    method: String,
+    params: BalancesParams,
+}
+
+impl BalancesSubscribeRequest {
+    /// Creates a new balances subscribe request.
+    #[must_use]
+    pub fn new(token: &str, snapshot: bool) -> Self {
+        Self {
+            method: "subscribe".to_string(),
+            params: BalancesParams::new(token, snapshot),
+        }
+    }
+}
+
+/// Parameters for balances channel unsubscription.
+#[derive(Debug, Clone, Serialize)]
+pub struct BalancesUnsubscribeParams {
+    channel: String,
+    token: RedactedToken,
+}
+
+/// An `unsubscribe` request for the balances channel.
+#[derive(Debug, Clone, Serialize)]
+pub struct BalancesUnsubscribeRequest {
+    method: String,
+    params: BalancesUnsubscribeParams,
+}
+
+impl BalancesUnsubscribeRequest {
+    /// Creates a new balances unsubscribe request.
+    #[must_use]
+    pub fn new(token: &str) -> Self {
+        Self {
+            method: "unsubscribe".to_string(),
+            params: BalancesUnsubscribeParams {
+                channel: Channel::Balances.as_str().to_string(),
                 token: RedactedToken::new(token),
             },
         }
