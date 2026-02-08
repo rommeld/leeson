@@ -6,6 +6,7 @@
 pub mod add_order;
 pub mod amend_order;
 pub mod batch_add;
+pub mod batch_cancel;
 pub mod book;
 pub mod cancel_after;
 pub mod cancel_all;
@@ -27,8 +28,12 @@ pub use amend_order::{
     AmendOrderResult, PriceType,
 };
 pub use batch_add::{
-    BatchAddBuilder, BatchAddError, BatchAddRequest, BatchAddResponse, BatchAddOrderResult,
+    BatchAddBuilder, BatchAddError, BatchAddOrderResult, BatchAddRequest, BatchAddResponse,
     BatchOrderEntry, MAX_BATCH_SIZE, MIN_BATCH_SIZE,
+};
+pub use batch_cancel::{
+    BatchCancelBuilder, BatchCancelError, BatchCancelRequest, BatchCancelResponse,
+    BatchCancelResult, MAX_BATCH_CANCEL_SIZE, MIN_BATCH_CANCEL_SIZE,
 };
 pub use cancel_after::{
     CancelAfterRequest, CancelAfterResponse, CancelAfterResult, MAX_TIMEOUT_SECONDS,

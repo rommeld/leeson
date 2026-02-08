@@ -1,10 +1,10 @@
 //! Serialization tests for WebSocket request types and Channel enum.
 
 use leeson::models::{
-    BatchAddBuilder, BatchAddResponse, BatchOrderEntry, CancelAfterRequest, CancelAfterResponse,
-    CancelAllRequest, CancelAllResponse, CancelOrderBuilder, CancelOrderResponse, Channel,
-    ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, OrderSide, PingRequest,
-    SubscribeRequest, UnsubscribeRequest,
+    BatchAddBuilder, BatchAddResponse, BatchCancelBuilder, BatchCancelRequest, BatchCancelResponse,
+    BatchOrderEntry, CancelAfterRequest, CancelAfterResponse, CancelAllRequest, CancelAllResponse,
+    CancelOrderBuilder, CancelOrderResponse, Channel, ExecutionsSubscribeRequest,
+    ExecutionsUnsubscribeRequest, OrderSide, PingRequest, SubscribeRequest, UnsubscribeRequest,
 };
 use rust_decimal_macros::dec;
 
@@ -134,8 +134,7 @@ fn test_cancel_order_by_order_id_serializes() {
     .build_request("ws-token-789")
     .expect("Failed to build cancel_order request");
 
-    let json =
-        serde_json::to_string(&request).expect("Failed to serialize cancel_order request");
+    let json = serde_json::to_string(&request).expect("Failed to serialize cancel_order request");
     let value: serde_json::Value =
         serde_json::from_str(&json).expect("Failed to parse serialized JSON");
 
@@ -154,8 +153,7 @@ fn test_cancel_order_by_cl_ord_id_serializes() {
         .build_request("ws-token-789")
         .expect("Failed to build cancel_order request");
 
-    let json =
-        serde_json::to_string(&request).expect("Failed to serialize cancel_order request");
+    let json = serde_json::to_string(&request).expect("Failed to serialize cancel_order request");
     let value: serde_json::Value =
         serde_json::from_str(&json).expect("Failed to parse serialized JSON");
 
@@ -171,8 +169,7 @@ fn test_cancel_order_by_order_userref_serializes() {
         .build_request("ws-token-789")
         .expect("Failed to build cancel_order request");
 
-    let json =
-        serde_json::to_string(&request).expect("Failed to serialize cancel_order request");
+    let json = serde_json::to_string(&request).expect("Failed to serialize cancel_order request");
     let value: serde_json::Value =
         serde_json::from_str(&json).expect("Failed to parse serialized JSON");
 
@@ -313,7 +310,10 @@ fn test_cancel_all_error_response_deserializes() {
 
     assert_eq!(response.method, "cancel_all");
     assert!(!response.success);
-    assert_eq!(response.error, Some("EGeneral:Permission denied".to_string()));
+    assert_eq!(
+        response.error,
+        Some("EGeneral:Permission denied".to_string())
+    );
     assert!(response.result.is_none());
 }
 
@@ -388,7 +388,10 @@ fn test_cancel_after_error_response_deserializes() {
 
     assert_eq!(response.method, "cancel_all_orders_after");
     assert!(!response.success);
-    assert_eq!(response.error, Some("EGeneral:Invalid arguments".to_string()));
+    assert_eq!(
+        response.error,
+        Some("EGeneral:Invalid arguments".to_string())
+    );
     assert!(response.result.is_none());
 }
 
@@ -397,8 +400,12 @@ fn test_cancel_after_error_response_deserializes() {
 #[test]
 fn test_batch_add_request_serializes() {
     let request = BatchAddBuilder::new("BTC/USD")
-        .add_order(BatchOrderEntry::limit(OrderSide::Buy, dec!(0.1), dec!(50000)).with_order_userref(1))
-        .add_order(BatchOrderEntry::limit(OrderSide::Sell, dec!(0.2), dec!(55000)).with_order_userref(2))
+        .add_order(
+            BatchOrderEntry::limit(OrderSide::Buy, dec!(0.1), dec!(50000)).with_order_userref(1),
+        )
+        .add_order(
+            BatchOrderEntry::limit(OrderSide::Sell, dec!(0.2), dec!(55000)).with_order_userref(2),
+        )
         .with_req_id(123456789)
         .build("ws-token-123")
         .expect("Failed to build batch_add request");
@@ -485,5 +492,110 @@ fn test_batch_add_error_response_deserializes() {
     assert_eq!(response.method, "batch_add");
     assert!(!response.success);
     assert_eq!(response.error, Some("EOrder:Invalid order".to_string()));
+    assert!(response.result.is_none());
+}
+
+// Batch cancel tests
+
+#[test]
+fn test_batch_cancel_request_serializes() {
+    let request = BatchCancelRequest::new(
+        vec![
+            "1".to_string(),
+            "2".to_string(),
+            "ORDERX-IDXXX-XXXXX3".to_string(),
+        ],
+        "ws-token-123",
+        Some(1234567890),
+    );
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize batch_cancel request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "batch_cancel");
+    assert_eq!(value["req_id"], 1234567890);
+    assert_eq!(value["params"]["token"], "ws-token-123");
+    assert_eq!(value["params"]["orders"].as_array().unwrap().len(), 3);
+    assert_eq!(value["params"]["orders"][0], "1");
+    assert_eq!(value["params"]["orders"][1], "2");
+    assert_eq!(value["params"]["orders"][2], "ORDERX-IDXXX-XXXXX3");
+}
+
+#[test]
+fn test_batch_cancel_builder_serializes() {
+    let request = BatchCancelBuilder::with_orders(vec!["1".to_string(), "2".to_string()])
+        .with_req_id(42)
+        .build("ws-token-456")
+        .expect("Failed to build batch_cancel request");
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize batch_cancel request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "batch_cancel");
+    assert_eq!(value["req_id"], 42);
+    assert_eq!(value["params"]["orders"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn test_batch_cancel_with_cl_ord_id_serializes() {
+    let request = BatchCancelRequest::new(
+        vec!["1".to_string(), "2".to_string()],
+        "ws-token-123",
+        Some(42),
+    )
+    .with_cl_ord_id(vec!["client-1".to_string(), "client-2".to_string()]);
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize batch_cancel request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["params"]["cl_ord_id"][0], "client-1");
+    assert_eq!(value["params"]["cl_ord_id"][1], "client-2");
+}
+
+#[test]
+fn test_batch_cancel_success_response_deserializes() {
+    let json = r#"{
+        "method": "batch_cancel",
+        "req_id": 1234567890,
+        "result": {
+            "count": 3
+        },
+        "success": true,
+        "time_in": "2022-06-13T08:09:10.123456Z",
+        "time_out": "2022-06-13T08:09:10.7890123"
+    }"#;
+
+    let response: BatchCancelResponse =
+        serde_json::from_str(json).expect("Failed to deserialize batch_cancel response");
+
+    assert_eq!(response.method, "batch_cancel");
+    assert!(response.success);
+    assert_eq!(response.req_id, Some(1234567890));
+    assert!(response.result.is_some());
+    assert_eq!(response.result.unwrap().count, 3);
+}
+
+#[test]
+fn test_batch_cancel_error_response_deserializes() {
+    let json = r#"{
+        "method": "batch_cancel",
+        "success": false,
+        "error": "EGeneral:Permission denied",
+        "time_in": "2022-06-13T08:09:10.123456Z",
+        "time_out": "2022-06-13T08:09:10.789012Z"
+    }"#;
+
+    let response: BatchCancelResponse =
+        serde_json::from_str(json).expect("Failed to deserialize batch_cancel error response");
+
+    assert_eq!(response.method, "batch_cancel");
+    assert!(!response.success);
+    assert_eq!(
+        response.error,
+        Some("EGeneral:Permission denied".to_string())
+    );
     assert!(response.result.is_none());
 }

@@ -21,10 +21,10 @@ use crate::models::ticker::TickerUpdateResponse;
 use crate::models::trade::TradeUpdateResponse;
 use crate::models::{
     AddOrderRequest, AddOrderResponse, AmendOrderRequest, AmendOrderResponse, BatchAddRequest,
-    BatchAddResponse, CancelAfterRequest, CancelAfterResponse, CancelAllRequest, CancelAllResponse,
-    CancelOrderRequest, CancelOrderResponse, Channel, ExecutionsSubscribeRequest,
-    ExecutionsUnsubscribeRequest, PingRequest, PongResponse, StatusUpdateResponse,
-    SubscribeRequest, UnsubscribeRequest,
+    BatchAddResponse, BatchCancelRequest, BatchCancelResponse, CancelAfterRequest,
+    CancelAfterResponse, CancelAllRequest, CancelAllResponse, CancelOrderRequest,
+    CancelOrderResponse, Channel, ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest,
+    PingRequest, PongResponse, StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
 };
 
 /// Write half of a Kraken WebSocket connection.
@@ -220,6 +220,28 @@ pub async fn batch_add(write: &mut WsWriter, request: BatchAddRequest) -> Result
     Ok(())
 }
 
+/// Sends a batch_cancel request to cancel multiple orders at once.
+///
+/// The batch must contain between 2 and 50 order identifiers. Orders can be
+/// identified by `order_id` or `order_userref`. The response is handled in
+/// [`process_messages`].
+///
+/// # Errors
+///
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the request fails.
+pub async fn batch_cancel(write: &mut WsWriter, request: BatchCancelRequest) -> Result<()> {
+    let json = serde_json::to_string(&request)?;
+    write.send(Message::Text(json.into())).await?;
+    info!(
+        method = "batch_cancel",
+        order_count = request.order_count(),
+        req_id = ?request.req_id(),
+        "Sent batch_cancel request"
+    );
+
+    Ok(())
+}
+
 /// Sends a cancel_order request to cancel one or more orders.
 ///
 /// This is an RPC-style request that receives a response for each order
@@ -388,6 +410,28 @@ pub async fn process_messages(read: &mut WsReader) -> Result<()> {
                         error = ?response.error,
                         req_id = ?response.req_id,
                         "Batch order placement failed"
+                    );
+                }
+                continue;
+            }
+
+            if msg_method == Some("batch_cancel") {
+                let response: BatchCancelResponse = serde_json::from_value(value)?;
+                if response.success {
+                    if let Some(ref result) = response.result {
+                        info!(
+                            method = response.method,
+                            count = result.count,
+                            req_id = ?response.req_id,
+                            "Batch orders cancelled successfully"
+                        );
+                    }
+                } else {
+                    warn!(
+                        method = response.method,
+                        error = ?response.error,
+                        req_id = ?response.req_id,
+                        "Batch order cancellation failed"
                     );
                 }
                 continue;
