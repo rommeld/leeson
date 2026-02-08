@@ -6,9 +6,10 @@ use tungstenite::Message;
 
 use super::WsWriter;
 use crate::Result;
+use crate::models::book::BookDepth;
 use crate::models::{
-    Channel, ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, SubscribeRequest,
-    UnsubscribeRequest,
+    BookSubscribeRequest, Channel, ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest,
+    SubscribeRequest, UnsubscribeRequest,
 };
 
 /// Subscribes to a symbol-based channel (e.g., ticker, book, trades).
@@ -28,6 +29,29 @@ pub async fn subscribe(
     let json = serde_json::to_string(&request)?;
     write.send(Message::Text(json.into())).await?;
     info!(channel = channel.as_str(), "Subscribed to channel");
+
+    Ok(())
+}
+
+/// Subscribes to the book channel with a specific depth.
+///
+/// # Errors
+///
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the subscription message fails.
+pub async fn subscribe_book(
+    write: &mut WsWriter,
+    symbols: &[String],
+    depth: BookDepth,
+    token: Option<&str>,
+) -> Result<()> {
+    let request = BookSubscribeRequest::new(symbols, depth, token.map(String::from));
+    let json = serde_json::to_string(&request)?;
+    write.send(Message::Text(json.into())).await?;
+    info!(
+        channel = Channel::Book.as_str(),
+        depth = depth.as_u16(),
+        "Subscribed to book channel"
+    );
 
     Ok(())
 }

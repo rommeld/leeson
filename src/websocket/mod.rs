@@ -6,6 +6,7 @@
 //! - [`trading`] - Order management RPC operations
 //! - [`handler`] - Incoming message processing
 
+pub mod connection;
 mod handler;
 mod subscription;
 mod trading;
@@ -25,10 +26,11 @@ use crate::Result;
 use crate::models::PingRequest;
 
 // Re-export submodule functions at the crate level for convenience
+pub use connection::{ConnectionCommand, ConnectionManager};
 pub use handler::process_messages;
 pub use subscription::{
-    subscribe, subscribe_executions, subscribe_instrument, unsubscribe, unsubscribe_executions,
-    unsubscribe_instrument,
+    subscribe, subscribe_book, subscribe_executions, subscribe_instrument, unsubscribe,
+    unsubscribe_executions, unsubscribe_instrument,
 };
 pub use trading::{
     add_order, amend_order, batch_add, batch_cancel, cancel_after, cancel_all, cancel_order,
