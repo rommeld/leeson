@@ -918,6 +918,7 @@ dependencies = [
  "tracing-subscriber",
  "tungstenite",
  "unicode-width 0.2.0",
+ "zeroize",
 ]
 
 [[package]]

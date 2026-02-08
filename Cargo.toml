@@ -23,6 +23,7 @@ rustls-pemfile = "2"
 hmac = "0.12"
 sha2 = "0.10"
 base64 = "0.22"
+zeroize = { version = "1.8", features = ["alloc"] }
 ratatui = "0.29"
 crossterm = { version = "0.28", features = ["event-stream"] }
 unicode-width = "0.2"

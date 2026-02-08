@@ -15,6 +15,7 @@ use futures_util::StreamExt;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
 use tungstenite::Message as WsMessage;
+use zeroize::Zeroizing;
 
 use super::{
     WsReader, WsWriter, connect, ping, subscribe, subscribe_balances, subscribe_book,
@@ -66,8 +67,8 @@ enum DisconnectReason {
 /// - Private: for authenticated channels (executions, balances)
 pub struct ConnectionManager {
     tls_config: Arc<rustls::ClientConfig>,
-    api_key: Option<String>,
-    api_secret: Option<String>,
+    api_key: Option<Zeroizing<String>>,
+    api_secret: Option<Zeroizing<String>>,
     tx: mpsc::UnboundedSender<Message>,
     writer: Arc<tokio::sync::Mutex<Option<WsWriter>>>,
     cmd_rx: mpsc::UnboundedReceiver<ConnectionCommand>,
@@ -76,6 +77,8 @@ pub struct ConnectionManager {
 
 impl ConnectionManager {
     /// Creates a new connection manager.
+    ///
+    /// Credentials are wrapped with [`Zeroizing`] to ensure secure erasure on drop.
     #[must_use]
     pub fn new(
         _url: String, // Ignored - we use fixed endpoints
@@ -88,8 +91,8 @@ impl ConnectionManager {
     ) -> Self {
         Self {
             tls_config,
-            api_key,
-            api_secret,
+            api_key: api_key.map(Zeroizing::new),
+            api_secret: api_secret.map(Zeroizing::new),
             tx,
             writer,
             cmd_rx,
@@ -111,8 +114,8 @@ impl ConnectionManager {
             return None;
         }
 
-        let key = self.api_key.as_deref().unwrap();
-        let secret = self.api_secret.as_deref().unwrap();
+        let key = self.api_key.as_ref().unwrap().as_str();
+        let secret = self.api_secret.as_ref().unwrap().as_str();
         let tls = (*self.tls_config).clone();
 
         match get_websocket_token(key, secret, tls).await {
