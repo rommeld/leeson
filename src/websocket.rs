@@ -14,12 +14,14 @@ use crate::error::LeesonError;
 
 use crate::models::book::BookUpdateResponse;
 use crate::models::candle::CandleUpdateResponse;
+use crate::models::execution::ExecutionUpdateResponse;
 use crate::models::instrument::InstrumentUpdateResponse;
 use crate::models::orders::OrdersUpdateResponse;
 use crate::models::ticker::TickerUpdateResponse;
 use crate::models::trade::TradeUpdateResponse;
 use crate::models::{
-    Channel, PingRequest, PongResponse, StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
+    Channel, ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, PingRequest, PongResponse,
+    StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
 };
 
 /// Write half of a Kraken WebSocket connection.
@@ -113,6 +115,45 @@ pub async fn unsubscribe_instrument(write: &mut WsWriter) -> Result<()> {
     Ok(())
 }
 
+/// Subscribes to the executions channel (authenticated, no symbols).
+///
+/// # Errors
+///
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the subscription message fails.
+pub async fn subscribe_executions(
+    write: &mut WsWriter,
+    token: &str,
+    snap_orders: bool,
+    snap_trades: bool,
+) -> Result<()> {
+    let request = ExecutionsSubscribeRequest::new(token, snap_orders, snap_trades);
+    let json = serde_json::to_string(&request)?;
+    write.send(Message::Text(json.into())).await?;
+    info!(
+        channel = Channel::Executions.as_str(),
+        "Subscribed to channel"
+    );
+
+    Ok(())
+}
+
+/// Unsubscribes from the executions channel.
+///
+/// # Errors
+///
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the unsubscribe message fails.
+pub async fn unsubscribe_executions(write: &mut WsWriter, token: &str) -> Result<()> {
+    let request = ExecutionsUnsubscribeRequest::new(token);
+    let json = serde_json::to_string(&request)?;
+    write.send(Message::Text(json.into())).await?;
+    info!(
+        channel = Channel::Executions.as_str(),
+        "Unsubscribed from channel"
+    );
+
+    Ok(())
+}
+
 /// Unsubscribes from a symbol-based channel.
 ///
 /// Pass a `token` for authenticated channels like `level3` (orders).
@@ -183,6 +224,33 @@ pub async fn process_messages(read: &mut WsReader) -> Result<()> {
                         version = status.version,
                         connection_id = status.connection_id,
                         "Status update"
+                    );
+                }
+                continue;
+            }
+
+            // Process executions channel for both snapshots and updates.
+            if msg_channel == Some(Channel::Executions.as_str()) {
+                let response: ExecutionUpdateResponse = serde_json::from_value(value)?;
+                for exec in &response.data {
+                    info!(
+                        channel = response.channel,
+                        msg_type = response.tpe,
+                        sequence = response.sequence,
+                        exec_type = exec.exec_type,
+                        order_id = exec.order_id,
+                        symbol = exec.symbol,
+                        side = exec.side,
+                        order_type = exec.order_type,
+                        order_status = exec.order_status,
+                        order_qty = %exec.order_qty,
+                        last_qty = exec.last_qty.map(|v| v.to_string()),
+                        last_price = exec.last_price.map(|v| v.to_string()),
+                        avg_price = exec.avg_price.map(|v| v.to_string()),
+                        cum_qty = exec.cum_qty.map(|v| v.to_string()),
+                        limit_price = exec.limit_price.map(|v| v.to_string()),
+                        timestamp = exec.timestamp,
+                        "Execution"
                     );
                 }
                 continue;

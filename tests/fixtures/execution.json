@@ -1,0 +1,43 @@
+{
+  "channel": "executions",
+  "type": "update",
+  "sequence": 42,
+  "data": [
+    {
+      "order_id": "OABC12-DEFG3-HIJKL4",
+      "order_userref": 12345,
+      "cl_ord_id": "my-order-1",
+      "exec_id": "TEXEC1-AAAAA-BBBBB",
+      "trade_id": 987654,
+      "symbol": "BTC/USD",
+      "side": "buy",
+      "order_type": "limit",
+      "order_qty": 1.5,
+      "order_status": "partially_filled",
+      "time_in_force": "GTC",
+      "limit_price": 42150.0,
+      "limit_price_type": "static",
+      "avg_price": 42148.5,
+      "last_price": 42148.5,
+      "exec_type": "trade",
+      "last_qty": 0.5,
+      "cum_qty": 0.5,
+      "cum_cost": 21074.25,
+      "cost": 21074.25,
+      "liquidity_ind": "m",
+      "fees": [
+        {
+          "asset": "USD",
+          "qty": 3.16
+        }
+      ],
+      "fee_ccy_pref": "fciq",
+      "fee_usd_equiv": 3.16,
+      "timestamp": "2024-01-15T10:30:00.123456Z",
+      "post_only": true,
+      "reduce_only": false,
+      "no_mpp": false,
+      "margin": false
+    }
+  ]
+}

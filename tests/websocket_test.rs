@@ -1,6 +1,9 @@
 //! Serialization tests for WebSocket request types and Channel enum.
 
-use leeson::models::{Channel, PingRequest, SubscribeRequest, UnsubscribeRequest};
+use leeson::models::{
+    Channel, ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, PingRequest,
+    SubscribeRequest, UnsubscribeRequest,
+};
 
 #[test]
 fn test_channel_as_str_returns_correct_wire_names() {
@@ -10,6 +13,7 @@ fn test_channel_as_str_returns_correct_wire_names() {
     assert_eq!(Channel::Candles.as_str(), "ohlc");
     assert_eq!(Channel::Trades.as_str(), "trade");
     assert_eq!(Channel::Instruments.as_str(), "instrument");
+    assert_eq!(Channel::Executions.as_str(), "executions");
     assert_eq!(Channel::Status.as_str(), "status");
     assert_eq!(Channel::Heartbeat.as_str(), "heartbeat");
 }
@@ -85,4 +89,34 @@ fn test_subscribe_request_with_token_serializes() {
     assert_eq!(value["params"]["channel"], "level3");
     assert_eq!(value["params"]["symbol"][0], "BTC/USD");
     assert_eq!(value["params"]["token"], "test-token-123");
+}
+
+#[test]
+fn test_executions_subscribe_request_serializes() {
+    let request = ExecutionsSubscribeRequest::new("ws-token-456", true, false);
+
+    let json =
+        serde_json::to_string(&request).expect("Failed to serialize executions subscribe request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "subscribe");
+    assert_eq!(value["params"]["channel"], "executions");
+    assert_eq!(value["params"]["token"], "ws-token-456");
+    assert_eq!(value["params"]["snap_orders"], true);
+    assert_eq!(value["params"]["snap_trades"], false);
+}
+
+#[test]
+fn test_executions_unsubscribe_request_serializes() {
+    let request = ExecutionsUnsubscribeRequest::new("ws-token-456");
+
+    let json = serde_json::to_string(&request)
+        .expect("Failed to serialize executions unsubscribe request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "unsubscribe");
+    assert_eq!(value["params"]["channel"], "executions");
+    assert_eq!(value["params"]["token"], "ws-token-456");
 }

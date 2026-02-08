@@ -4,6 +4,7 @@ use rust_decimal_macros::dec;
 
 use leeson::models::book::{BookData, BookUpdateResponse, PriceLevel};
 use leeson::models::candle::{CandleData, CandleUpdateResponse};
+use leeson::models::execution::{ExecutionData, ExecutionUpdateResponse, Fee};
 use leeson::models::instrument::{AssetInfo, InstrumentData, InstrumentUpdateResponse, PairInfo};
 use leeson::models::orders::{OrderEntry, OrdersData, OrdersUpdateResponse};
 use leeson::models::ticker::{TickerData, TickerUpdateResponse};
@@ -16,6 +17,7 @@ const TRADE_JSON: &str = include_str!("fixtures/trade.json");
 const CANDLE_JSON: &str = include_str!("fixtures/candle.json");
 const INSTRUMENT_JSON: &str = include_str!("fixtures/instrument.json");
 const ORDERS_JSON: &str = include_str!("fixtures/orders.json");
+const EXECUTION_JSON: &str = include_str!("fixtures/execution.json");
 const PONG_JSON: &str = include_str!("fixtures/pong.json");
 const STATUS_JSON: &str = include_str!("fixtures/status.json");
 const HEARTBEAT_JSON: &str = include_str!("fixtures/heartbeat.json");
@@ -188,6 +190,49 @@ fn test_orders_update_response_deserializes() {
     assert_eq!(delete_order.event, Some("delete".to_string()));
     assert_eq!(delete_order.order_id, "O789GHI");
     assert_eq!(delete_order.order_qty, dec!(0.0));
+}
+
+#[test]
+fn test_execution_update_response_deserializes() {
+    let response: ExecutionUpdateResponse =
+        serde_json::from_str(EXECUTION_JSON).expect("Failed to deserialize execution response");
+
+    assert_eq!(response.channel, "executions");
+    assert_eq!(response.tpe, "update");
+    assert_eq!(response.sequence, 42);
+    assert_eq!(response.data.len(), 1);
+
+    let exec: &ExecutionData = &response.data[0];
+    assert_eq!(exec.order_id, "OABC12-DEFG3-HIJKL4");
+    assert_eq!(exec.order_userref, Some(12345));
+    assert_eq!(exec.cl_ord_id, Some("my-order-1".to_string()));
+    assert_eq!(exec.exec_id, Some("TEXEC1-AAAAA-BBBBB".to_string()));
+    assert_eq!(exec.trade_id, Some(987654));
+    assert_eq!(exec.symbol, "BTC/USD");
+    assert_eq!(exec.side, "buy");
+    assert_eq!(exec.order_type, "limit");
+    assert_eq!(exec.order_qty, dec!(1.5));
+    assert_eq!(exec.order_status, "partially_filled");
+    assert_eq!(exec.time_in_force, Some("GTC".to_string()));
+    assert_eq!(exec.limit_price, Some(dec!(42150.0)));
+    assert_eq!(exec.avg_price, Some(dec!(42148.5)));
+    assert_eq!(exec.last_price, Some(dec!(42148.5)));
+    assert_eq!(exec.exec_type, "trade");
+    assert_eq!(exec.last_qty, Some(dec!(0.5)));
+    assert_eq!(exec.cum_qty, Some(dec!(0.5)));
+    assert_eq!(exec.cum_cost, Some(dec!(21074.25)));
+    assert_eq!(exec.cost, Some(dec!(21074.25)));
+    assert_eq!(exec.liquidity_ind, Some("m".to_string()));
+    assert_eq!(exec.timestamp, "2024-01-15T10:30:00.123456Z");
+    assert_eq!(exec.post_only, Some(true));
+    assert_eq!(exec.reduce_only, Some(false));
+
+    // Fees
+    let fees: &Vec<Fee> = exec.fees.as_ref().expect("Expected fees");
+    assert_eq!(fees.len(), 1);
+    assert_eq!(fees[0].asset, "USD");
+    assert_eq!(fees[0].qty, dec!(3.16));
+    assert_eq!(exec.fee_usd_equiv, Some(dec!(3.16)));
 }
 
 #[test]

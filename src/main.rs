@@ -2,7 +2,9 @@ use leeson::LeesonError;
 use leeson::auth::get_websocket_token;
 use leeson::config::fetch_config;
 use leeson::models::Channel;
-use leeson::websocket::{connect, ping, process_messages, subscribe, subscribe_instrument};
+use leeson::websocket::{
+    connect, ping, process_messages, subscribe, subscribe_executions, subscribe_instrument,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), LeesonError> {
@@ -32,6 +34,7 @@ async fn main() -> Result<(), LeesonError> {
 
     if let Some(ref token) = token {
         subscribe(&mut write, &Channel::Orders, &symbols, Some(token)).await?;
+        subscribe_executions(&mut write, token, true, false).await?;
     }
 
     process_messages(&mut read).await?;

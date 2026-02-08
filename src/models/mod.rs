@@ -3,12 +3,20 @@
 //! Contains channel definitions, subscription request/response types,
 //! and common protocol messages (ping/pong, heartbeat, status).
 
+pub mod add_order;
 pub mod book;
 pub mod candle;
+pub mod execution;
 pub mod instrument;
 pub mod orders;
 pub mod ticker;
 pub mod trade;
+
+pub use add_order::{
+    AddOrderBuilder, AddOrderError, AddOrderParams, AddOrderRequest, AddOrderResponse,
+    AddOrderResult, ConditionalOrder, FeeCurrencyPreference, OrderSide, OrderType, StpType,
+    TimeInForce, TriggerParams, TriggerPriceType, TriggerReference,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +31,8 @@ pub enum Channel {
     Candles,
     Trades,
     Instruments,
+    /// User execution reports (wire name: `"executions"`).
+    Executions,
     Status,
     Heartbeat,
 }
@@ -38,6 +48,7 @@ impl Channel {
             Channel::Candles => "ohlc",
             Channel::Trades => "trade",
             Channel::Instruments => "instrument",
+            Channel::Executions => "executions",
             Channel::Status => "status",
             Channel::Heartbeat => "heartbeat",
         }
@@ -156,6 +167,74 @@ impl BookUnsubscribeRequest {
         Self {
             method: "unsubscribe".to_string(),
             params: BookParams::new(symbols, depth, None),
+        }
+    }
+}
+
+/// Parameters for executions channel subscription.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExecutionsParams {
+    channel: String,
+    token: String,
+    snap_orders: bool,
+    snap_trades: bool,
+}
+
+impl ExecutionsParams {
+    /// Creates new executions parameters.
+    #[must_use]
+    pub fn new(token: &str, snap_orders: bool, snap_trades: bool) -> Self {
+        Self {
+            channel: Channel::Executions.as_str().to_string(),
+            token: token.to_string(),
+            snap_orders,
+            snap_trades,
+        }
+    }
+}
+
+/// A `subscribe` request for the executions channel.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExecutionsSubscribeRequest {
+    method: String,
+    params: ExecutionsParams,
+}
+
+impl ExecutionsSubscribeRequest {
+    /// Creates a new executions subscribe request.
+    #[must_use]
+    pub fn new(token: &str, snap_orders: bool, snap_trades: bool) -> Self {
+        Self {
+            method: "subscribe".to_string(),
+            params: ExecutionsParams::new(token, snap_orders, snap_trades),
+        }
+    }
+}
+
+/// An `unsubscribe` request for the executions channel.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExecutionsUnsubscribeRequest {
+    method: String,
+    params: ExecutionsUnsubscribeParams,
+}
+
+/// Parameters for executions channel unsubscription.
+#[derive(Debug, Clone, Serialize)]
+pub struct ExecutionsUnsubscribeParams {
+    channel: String,
+    token: String,
+}
+
+impl ExecutionsUnsubscribeRequest {
+    /// Creates a new executions unsubscribe request.
+    #[must_use]
+    pub fn new(token: &str) -> Self {
+        Self {
+            method: "unsubscribe".to_string(),
+            params: ExecutionsUnsubscribeParams {
+                channel: Channel::Executions.as_str().to_string(),
+                token: token.to_string(),
+            },
         }
     }
 }
