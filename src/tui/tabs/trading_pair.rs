@@ -111,7 +111,7 @@ fn render_ticker_header(frame: &mut Frame, area: Rect, app: &App, symbol: &str) 
     frame.render_widget(para, area);
 }
 
-/// Renders the order book.
+/// Renders the order book with history.
 fn render_orderbook(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
     let is_focused = app.focus == Focus::OrderBook;
     let border_style = if is_focused {
@@ -128,14 +128,26 @@ fn render_orderbook(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
+    // Split the order book area: depth view on top, history below
+    let orderbook_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
+        .split(inner);
+
+    render_orderbook_depth(frame, orderbook_layout[0], app, symbol);
+    render_orderbook_history(frame, orderbook_layout[1], app, symbol);
+}
+
+/// Renders the order book depth (bids/asks).
+fn render_orderbook_depth(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
     let orderbook = app.orderbooks.get(symbol);
 
     let mut lines: Vec<Line> = Vec::new();
 
     // Calculate how many levels to show per side
     // Reserve 3 lines for: ASK header, spread, BID header
-    let available_height = inner.height.saturating_sub(3) as usize;
-    let levels_per_side = (available_height / 2).clamp(1, 20);
+    let available_height = area.height.saturating_sub(3) as usize;
+    let levels_per_side = (available_height / 2).clamp(1, 10);
 
     // ASK header
     lines.push(Line::from(Span::styled(
@@ -220,7 +232,96 @@ fn render_orderbook(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
     }
 
     let para = Paragraph::new(lines);
-    frame.render_widget(para, inner);
+    frame.render_widget(para, area);
+}
+
+/// Renders the order book history table.
+fn render_orderbook_history(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
+    let mut lines: Vec<Line> = Vec::new();
+
+    // Header
+    lines.push(Line::from(Span::styled(
+        "History",
+        Style::default()
+            .fg(Color::White)
+            .add_modifier(Modifier::BOLD),
+    )));
+
+    // Column headers
+    lines.push(Line::from(Span::styled(
+        format!(
+            "{:>8}  {:>12}  {:>12}  {:>8}",
+            "Time", "Bid", "Ask", "Spread"
+        ),
+        Style::default().fg(Color::DarkGray),
+    )));
+
+    if let Some(ob) = app.orderbooks.get(symbol) {
+        let max_rows = area.height.saturating_sub(2) as usize;
+
+        // Iterate in reverse to show most recent first
+        let history_iter: Vec<_> = ob.history.iter().rev().take(max_rows).collect();
+
+        for (i, snapshot) in history_iter.iter().enumerate() {
+            // Calculate time ago in seconds
+            let elapsed = snapshot.timestamp.elapsed();
+            let time_str = format!("{:.1}s", elapsed.as_secs_f32());
+
+            // Calculate spread delta from next (previous in time) snapshot if available
+            let spread_delta = if i + 1 < history_iter.len() {
+                let prev_spread = history_iter[i + 1].spread;
+                let delta = snapshot.spread - prev_spread;
+                if delta > Decimal::ZERO {
+                    format!("+{:.2}", delta)
+                } else if delta < Decimal::ZERO {
+                    format!("{:.2}", delta)
+                } else {
+                    "=".to_string()
+                }
+            } else {
+                "-".to_string()
+            };
+
+            let spread_color = if spread_delta.starts_with('+') {
+                Color::Red // Spread widening is bad
+            } else if spread_delta.starts_with('-') {
+                Color::Green // Spread tightening is good
+            } else {
+                Color::DarkGray
+            };
+
+            lines.push(Line::from(vec![
+                Span::raw(format!("{:>8}  ", time_str)),
+                Span::styled(
+                    format!("{:>12.2}  ", snapshot.best_bid),
+                    Style::default().fg(Color::Green),
+                ),
+                Span::styled(
+                    format!("{:>12.2}  ", snapshot.best_ask),
+                    Style::default().fg(Color::Red),
+                ),
+                Span::styled(
+                    format!("{:>8}", spread_delta),
+                    Style::default().fg(spread_color),
+                ),
+            ]));
+        }
+
+        if ob.history.is_empty() {
+            lines.push(Line::from(Span::styled(
+                "No history yet",
+                Style::default().fg(Color::DarkGray),
+            )));
+        }
+    } else {
+        lines.push(Line::from(Span::styled(
+            "No data",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
+
+    let para = Paragraph::new(lines);
+    frame.render_widget(para, area);
 }
 
 /// Renders the chart panel.

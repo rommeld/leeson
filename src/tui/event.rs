@@ -15,7 +15,7 @@ use crate::models::{
     StatusUpdateResponse,
 };
 
-use super::app::{App, Focus, Mode, OrderBookSnapshot, Tab, MAX_ORDERBOOK_HISTORY};
+use super::app::{App, Focus, MAX_ORDERBOOK_HISTORY, Mode, OrderBookSnapshot, Tab};
 
 /// Events that can occur in the application.
 #[derive(Debug)]
