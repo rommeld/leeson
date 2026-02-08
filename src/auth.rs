@@ -51,6 +51,7 @@ pub async fn get_websocket_token(
         .send()
         .await?;
 
+    let response = response.error_for_status()?;
     let body: serde_json::Value = response.json().await?;
 
     let errors = body["error"].as_array();
