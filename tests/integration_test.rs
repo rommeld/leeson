@@ -15,13 +15,15 @@ use common::KRAKEN_WS_URL;
 
 #[tokio::test]
 async fn test_connect_to_kraken_websocket() {
-    let result = connect(KRAKEN_WS_URL).await;
+    let result = connect(KRAKEN_WS_URL, common::test_tls_config()).await;
     assert!(result.is_ok(), "Failed to connect to Kraken WebSocket");
 }
 
 #[tokio::test]
 async fn test_ping_pong() {
-    let (mut write, mut read) = connect(KRAKEN_WS_URL).await.expect("Failed to connect");
+    let (mut write, mut read) = connect(KRAKEN_WS_URL, common::test_tls_config())
+        .await
+        .expect("Failed to connect");
 
     // Send ping
     ping(&mut write).await.expect("Failed to send ping");
@@ -44,7 +46,9 @@ async fn test_ping_pong() {
 
 #[tokio::test]
 async fn test_subscribe_and_receive_ticker() {
-    let (mut write, mut read) = connect(KRAKEN_WS_URL).await.expect("Failed to connect");
+    let (mut write, mut read) = connect(KRAKEN_WS_URL, common::test_tls_config())
+        .await
+        .expect("Failed to connect");
 
     let symbols = vec!["BTC/USD".to_string()];
 
@@ -76,7 +80,9 @@ async fn test_subscribe_and_receive_ticker() {
 
 #[tokio::test]
 async fn test_subscribe_and_receive_book() {
-    let (mut write, mut read) = connect(KRAKEN_WS_URL).await.expect("Failed to connect");
+    let (mut write, mut read) = connect(KRAKEN_WS_URL, common::test_tls_config())
+        .await
+        .expect("Failed to connect");
 
     let symbols = vec!["BTC/USD".to_string()];
 

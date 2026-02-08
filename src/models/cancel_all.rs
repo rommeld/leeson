@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// Parameters for the cancel_all request.
 #[derive(Debug, Clone, Serialize)]
 pub struct CancelAllParams {
-    pub token: String,
+    pub token: super::RedactedToken,
 }
 
 /// The cancel_all request message.
@@ -27,7 +27,7 @@ impl CancelAllRequest {
         Self {
             method: "cancel_all".to_string(),
             params: CancelAllParams {
-                token: token.to_string(),
+                token: super::RedactedToken::new(token),
             },
             req_id,
         }
@@ -140,7 +140,10 @@ mod tests {
 
         let response: CancelAllResponse = serde_json::from_str(json).unwrap();
         assert!(!response.success);
-        assert_eq!(response.error, Some("EGeneral:Permission denied".to_string()));
+        assert_eq!(
+            response.error,
+            Some("EGeneral:Permission denied".to_string())
+        );
         assert!(response.result.is_none());
     }
 

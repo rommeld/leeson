@@ -10,11 +10,14 @@ mod handler;
 mod subscription;
 mod trading;
 
+use std::sync::Arc;
+
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
-use tokio_tungstenite::connect_async;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
+use tokio_tungstenite::{
+    Connector, MaybeTlsStream, WebSocketStream, connect_async_tls_with_config,
+};
 use tracing::{debug, info};
 use tungstenite::Message;
 
@@ -38,13 +41,18 @@ pub type WsWriter = SplitSink<WebSocketStream<MaybeTlsStream<TcpStream>>, Messag
 /// Read half of a Kraken WebSocket connection.
 pub type WsReader = SplitStream<WebSocketStream<MaybeTlsStream<TcpStream>>>;
 
-/// Establishes a WebSocket connection to the given URL.
+/// Establishes a WebSocket connection to the given URL using the
+/// provided rustls TLS configuration for certificate verification.
 ///
 /// # Errors
 ///
 /// Returns a [`LeesonError`](crate::LeesonError) if the connection or TLS handshake fails.
-pub async fn connect(url: &str) -> Result<(WsWriter, WsReader)> {
-    let (ws_stream, _) = connect_async(url).await?;
+pub async fn connect(
+    url: &str,
+    tls_config: Arc<rustls::ClientConfig>,
+) -> Result<(WsWriter, WsReader)> {
+    let connector = Connector::Rustls(tls_config);
+    let (ws_stream, _) = connect_async_tls_with_config(url, None, false, Some(connector)).await?;
     info!("WebSocket handshake completed");
 
     Ok(ws_stream.split())

@@ -11,11 +11,10 @@ fn fixtures_dir() -> PathBuf {
 #[test]
 fn test_valid_config_deserializes() {
     let config_path = fixtures_dir().join("config.toml");
-    let config_content = std::fs::read_to_string(&config_path)
-        .expect("Failed to read test config file");
+    let config_content =
+        std::fs::read_to_string(&config_path).expect("Failed to read test config file");
 
-    let config: toml::Value = toml::from_str(&config_content)
-        .expect("Failed to parse config TOML");
+    let config: toml::Value = toml::from_str(&config_content).expect("Failed to parse config TOML");
 
     assert!(config.get("kraken").is_some());
     assert_eq!(
@@ -27,11 +26,10 @@ fn test_valid_config_deserializes() {
 #[test]
 fn test_invalid_config_missing_field() {
     let config_path = fixtures_dir().join("invalid_config.toml");
-    let config_content = std::fs::read_to_string(&config_path)
-        .expect("Failed to read test config file");
+    let config_content =
+        std::fs::read_to_string(&config_path).expect("Failed to read test config file");
 
-    let config: toml::Value = toml::from_str(&config_content)
-        .expect("Failed to parse config TOML");
+    let config: toml::Value = toml::from_str(&config_content).expect("Failed to parse config TOML");
 
     // The invalid config has kraken section but no websocket_url
     assert!(config.get("kraken").is_some());

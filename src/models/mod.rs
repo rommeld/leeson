@@ -49,7 +49,52 @@ pub use edit_order::{
     EditOrderResult,
 };
 
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
+
+/// A `String` wrapper whose [`Debug`] output replaces the value with
+/// `[REDACTED]` so authentication tokens are never leaked into logs.
+///
+/// It serializes transparently as a plain string and dereferences to
+/// `&str` / `&String` for ergonomic use.
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(transparent)]
+pub struct RedactedToken(String);
+
+impl RedactedToken {
+    /// Wraps a token string.
+    #[must_use]
+    pub fn new(token: impl Into<String>) -> Self {
+        Self(token.into())
+    }
+
+    /// Returns the inner token value.
+    #[must_use]
+    pub fn into_inner(self) -> String {
+        self.0
+    }
+}
+
+impl fmt::Debug for RedactedToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[REDACTED]")
+    }
+}
+
+impl std::ops::Deref for RedactedToken {
+    type Target = String;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl fmt::Display for RedactedToken {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("[REDACTED]")
+    }
+}
 
 /// Available Kraken WebSocket V2 channels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -128,7 +173,7 @@ pub struct Params {
     channel: String,
     symbol: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    token: Option<String>,
+    token: Option<RedactedToken>,
 }
 
 impl Params {
@@ -138,7 +183,7 @@ impl Params {
         Self {
             channel: channel.as_str().to_string(),
             symbol: symbols.to_vec(),
-            token,
+            token: token.map(RedactedToken::new),
         }
     }
 }
@@ -150,7 +195,7 @@ pub struct BookParams {
     symbol: Vec<String>,
     depth: u16,
     #[serde(skip_serializing_if = "Option::is_none")]
-    token: Option<String>,
+    token: Option<RedactedToken>,
 }
 
 impl BookParams {
@@ -161,7 +206,7 @@ impl BookParams {
             channel: Channel::Book.as_str().to_string(),
             symbol: symbols.to_vec(),
             depth: depth.as_u16(),
-            token,
+            token: token.map(RedactedToken::new),
         }
     }
 }
@@ -206,7 +251,7 @@ impl BookUnsubscribeRequest {
 #[derive(Debug, Clone, Serialize)]
 pub struct ExecutionsParams {
     channel: String,
-    token: String,
+    token: RedactedToken,
     snap_orders: bool,
     snap_trades: bool,
 }
@@ -217,7 +262,7 @@ impl ExecutionsParams {
     pub fn new(token: &str, snap_orders: bool, snap_trades: bool) -> Self {
         Self {
             channel: Channel::Executions.as_str().to_string(),
-            token: token.to_string(),
+            token: RedactedToken::new(token),
             snap_orders,
             snap_trades,
         }
@@ -253,7 +298,7 @@ pub struct ExecutionsUnsubscribeRequest {
 #[derive(Debug, Clone, Serialize)]
 pub struct ExecutionsUnsubscribeParams {
     channel: String,
-    token: String,
+    token: RedactedToken,
 }
 
 impl ExecutionsUnsubscribeRequest {
@@ -264,7 +309,7 @@ impl ExecutionsUnsubscribeRequest {
             method: "unsubscribe".to_string(),
             params: ExecutionsUnsubscribeParams {
                 channel: Channel::Executions.as_str().to_string(),
-                token: token.to_string(),
+                token: RedactedToken::new(token),
             },
         }
     }

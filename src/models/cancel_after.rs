@@ -33,7 +33,7 @@ pub const MAX_TIMEOUT_SECONDS: u32 = 86400;
 pub struct CancelAfterParams {
     /// Duration in seconds until orders are cancelled. Set to 0 to disable.
     pub timeout: u32,
-    pub token: String,
+    pub token: super::RedactedToken,
 }
 
 /// The cancel_all_orders_after request message.
@@ -59,7 +59,7 @@ impl CancelAfterRequest {
             method: "cancel_all_orders_after".to_string(),
             params: CancelAfterParams {
                 timeout,
-                token: token.to_string(),
+                token: super::RedactedToken::new(token),
             },
             req_id,
         }
@@ -188,7 +188,10 @@ mod tests {
 
         let response: CancelAfterResponse = serde_json::from_str(json).unwrap();
         assert!(!response.success);
-        assert_eq!(response.error, Some("EGeneral:Invalid arguments".to_string()));
+        assert_eq!(
+            response.error,
+            Some("EGeneral:Invalid arguments".to_string())
+        );
         assert!(response.result.is_none());
     }
 

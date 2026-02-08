@@ -207,7 +207,7 @@ impl BatchOrderEntry {
 pub struct BatchAddParams {
     pub symbol: String,
     pub orders: Vec<BatchOrderEntry>,
-    pub token: String,
+    pub token: super::RedactedToken,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deadline: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -244,7 +244,7 @@ impl BatchAddRequest {
             params: BatchAddParams {
                 symbol: symbol.to_string(),
                 orders,
-                token: token.to_string(),
+                token: super::RedactedToken::new(token),
                 deadline: None,
                 validate: None,
             },
@@ -431,8 +431,7 @@ mod tests {
     #[test]
     fn serialize_batch_add_request() {
         let orders = vec![
-            BatchOrderEntry::limit(OrderSide::Buy, dec!(0.1), dec!(50000))
-                .with_order_userref(1),
+            BatchOrderEntry::limit(OrderSide::Buy, dec!(0.1), dec!(50000)).with_order_userref(1),
             BatchOrderEntry::limit(OrderSide::Sell, dec!(0.2), dec!(55000))
                 .with_order_userref(2)
                 .with_stp_type(StpType::CancelBoth),
@@ -502,7 +501,11 @@ mod tests {
     fn builder_accepts_valid_batch() {
         let result = BatchAddBuilder::new("BTC/USD")
             .add_order(BatchOrderEntry::limit(OrderSide::Buy, dec!(1), dec!(50000)))
-            .add_order(BatchOrderEntry::limit(OrderSide::Sell, dec!(1), dec!(55000)))
+            .add_order(BatchOrderEntry::limit(
+                OrderSide::Sell,
+                dec!(1),
+                dec!(55000),
+            ))
             .with_req_id(42)
             .build("token");
 

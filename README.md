@@ -1,0 +1,5 @@
+# Leeson
+
+## Leveraged Execution Engine for Speculative Operations Network
+
+This project is a crypto currency trading platform built as a hybrid Rust/Python system. The Rust layer provides two core capabilities: a terminal user interface (TUI) for real-time operator interaction and monitoring, and a WebSocket client that maintains a persistent connection to the Kraken exchange for market data and order execution. The Python layer implements autonomous trading agents that leverage Anthropic's Claude API for decision-making and strategy execution. The architecture bridges Rust and Python across a process boundary, with Rust handling the performance-critical, low-latency exchange connectivity and rendering, while Python provides the flexible, AI-driven agent logic. Operators interact with and oversee the agents through the TUI, which serves as the primary control surface for the system.

@@ -8,6 +8,8 @@ pub mod auth;
 pub mod config;
 pub mod error;
 pub mod models;
+pub mod tls;
+pub mod tui;
 pub mod websocket;
 
 pub use error::{LeesonError, Result};

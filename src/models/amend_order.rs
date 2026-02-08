@@ -44,7 +44,7 @@ pub struct AmendOrderParams {
     pub symbol: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deadline: Option<String>,
-    pub token: String,
+    pub token: super::RedactedToken,
 }
 
 /// The amend_order request message.
@@ -245,7 +245,7 @@ impl AmendOrderBuilder {
             trigger_price_type: self.trigger_price_type,
             symbol: self.symbol,
             deadline: self.deadline,
-            token: token.to_string(),
+            token: super::RedactedToken::new(token),
         })
     }
 

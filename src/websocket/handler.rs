@@ -52,10 +52,7 @@ fn dispatch_message(value: serde_json::Value) -> Result<()> {
         .get("method")
         .and_then(|m| m.as_str())
         .map(String::from);
-    let msg_type = value
-        .get("type")
-        .and_then(|t| t.as_str())
-        .map(String::from);
+    let msg_type = value.get("type").and_then(|t| t.as_str()).map(String::from);
     let msg_channel = value
         .get("channel")
         .and_then(|c| c.as_str())

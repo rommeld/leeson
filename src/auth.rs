@@ -5,11 +5,17 @@
 //! [`GetWebSocketsToken`](https://docs.kraken.com/api/docs/rest-api/get-websockets-token)
 //! REST endpoint.  The token is valid for 15 minutes after creation.
 
+use std::sync::Mutex;
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use base64::prelude::*;
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256, Sha512};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
+
+/// Tracks the last nonce issued so every call returns a strictly
+/// increasing value even when the wall-clock hasn't advanced.
+static LAST_NONCE: Mutex<u128> = Mutex::new(0);
 
 use crate::Result;
 
@@ -22,16 +28,20 @@ const URL_PATH: &str = "/0/private/GetWebSocketsToken";
 ///
 /// Returns a [`LeesonError`](crate::LeesonError) if the HTTP request fails,
 /// the response cannot be parsed, or the API returns an error.
-pub async fn get_websocket_token(api_key: &str, api_secret: &str) -> Result<String> {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("system clock before UNIX epoch")
-        .as_millis();
+pub async fn get_websocket_token(
+    api_key: &str,
+    api_secret: &str,
+    tls_config: rustls::ClientConfig,
+) -> Result<String> {
+    let nonce = next_nonce();
 
     let post_data = format!("nonce={nonce}");
     let signature = sign(api_secret, URL_PATH, nonce, &post_data)?;
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .use_preconfigured_tls(tls_config)
+        .build()
+        .map_err(|e| crate::LeesonError::Tls(format!("failed to build HTTP client: {e}")))?;
     let response = client
         .post(TOKEN_URL)
         .header("API-Key", api_key)
@@ -68,6 +78,23 @@ pub async fn get_websocket_token(api_key: &str, api_secret: &str) -> Result<Stri
 
     info!("Obtained WebSocket authentication token");
     Ok(token)
+}
+
+/// Returns a strictly monotonically-increasing nonce with nanosecond resolution.
+///
+/// Uses the wall-clock as the baseline but guarantees that successive calls
+/// always return a value larger than the previous one, even when the clock
+/// resolution is too coarse or the clock jumps backwards.
+fn next_nonce() -> u128 {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("system clock before UNIX epoch")
+        .as_nanos();
+
+    let mut prev = LAST_NONCE.lock().expect("nonce mutex poisoned");
+    let nonce = now.max(*prev + 1);
+    *prev = nonce;
+    nonce
 }
 
 /// Computes the `API-Sign` header value.
@@ -116,5 +143,18 @@ mod tests {
     fn sign_rejects_invalid_base64_secret() {
         let result = sign("not-valid-base64!!!", URL_PATH, 123, "nonce=123");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn next_nonce_is_strictly_monotonic() {
+        let mut prev = next_nonce();
+        for _ in 0..1_000 {
+            let current = next_nonce();
+            assert!(
+                current > prev,
+                "nonce did not increase: {prev} -> {current}"
+            );
+            prev = current;
+        }
     }
 }

@@ -21,7 +21,7 @@ pub struct BatchCancelParams {
     pub orders: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cl_ord_id: Option<Vec<String>>,
-    pub token: String,
+    pub token: super::RedactedToken,
 }
 
 /// The batch_cancel request message.
@@ -48,7 +48,7 @@ impl BatchCancelRequest {
             params: BatchCancelParams {
                 orders,
                 cl_ord_id: None,
-                token: token.to_string(),
+                token: super::RedactedToken::new(token),
             },
             req_id,
         }

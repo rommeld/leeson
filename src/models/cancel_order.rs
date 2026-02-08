@@ -14,7 +14,7 @@ pub struct CancelOrderParams {
     pub cl_ord_id: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_userref: Option<Vec<i64>>,
-    pub token: String,
+    pub token: super::RedactedToken,
 }
 
 /// The cancel_order request message.
@@ -170,7 +170,7 @@ impl CancelOrderBuilder {
             order_id: self.order_id,
             cl_ord_id: self.cl_ord_id,
             order_userref: self.order_userref,
-            token: token.to_string(),
+            token: super::RedactedToken::new(token),
         })
     }
 
@@ -254,7 +254,10 @@ mod tests {
         let json = serde_json::to_string(&request).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(value["params"]["order_id"], serde_json::json!(["OM5CRX-N2HAL-GFGWE9"]));
+        assert_eq!(
+            value["params"]["order_id"],
+            serde_json::json!(["OM5CRX-N2HAL-GFGWE9"])
+        );
     }
 
     #[test]
@@ -266,7 +269,10 @@ mod tests {
         let json = serde_json::to_string(&request).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(value["params"]["cl_ord_id"], serde_json::json!(["my-order-1"]));
+        assert_eq!(
+            value["params"]["cl_ord_id"],
+            serde_json::json!(["my-order-1"])
+        );
         assert!(value["params"].get("order_id").is_none());
     }
 
@@ -279,7 +285,10 @@ mod tests {
         let json = serde_json::to_string(&request).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
 
-        assert_eq!(value["params"]["order_userref"], serde_json::json!([12345, 67890]));
+        assert_eq!(
+            value["params"]["order_userref"],
+            serde_json::json!([12345, 67890])
+        );
     }
 
     #[test]
@@ -314,7 +323,10 @@ mod tests {
 
         let response: CancelOrderResponse = serde_json::from_str(json).unwrap();
         assert!(response.success);
-        assert_eq!(response.result.as_ref().unwrap().order_id, "OLUMT4-UTEGU-ZYM7E9");
+        assert_eq!(
+            response.result.as_ref().unwrap().order_id,
+            "OLUMT4-UTEGU-ZYM7E9"
+        );
         assert_eq!(
             response.result.as_ref().unwrap().cl_ord_id,
             Some("my-order-1".to_string())
@@ -351,6 +363,9 @@ mod tests {
 
         let response: CancelOrderResponse = serde_json::from_str(json).unwrap();
         assert!(response.success);
-        assert_eq!(response.warnings, Some(vec!["Deprecated field used".to_string()]));
+        assert_eq!(
+            response.warnings,
+            Some(vec!["Deprecated field used".to_string()])
+        );
     }
 }

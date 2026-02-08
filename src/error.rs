@@ -29,4 +29,16 @@ pub enum LeesonError {
     /// An HTTP request (e.g. fetching a WebSocket token) failed.
     #[error("http error: {0}")]
     Http(#[from] reqwest::Error),
+
+    /// A TLS configuration error occurred (e.g. invalid certificate).
+    #[error("tls error: {0}")]
+    Tls(String),
+
+    /// An I/O operation (e.g. terminal setup) failed.
+    #[error("io error: {0}")]
+    Io(String),
+
+    /// A channel send operation failed.
+    #[error("channel error: {0}")]
+    Channel(String),
 }

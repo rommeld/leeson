@@ -29,7 +29,7 @@ pub struct EditOrderParams {
     pub order_id: String,
     /// Trading pair (cannot be changed, but must be specified).
     pub symbol: String,
-    pub token: String,
+    pub token: super::RedactedToken,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order_qty: Option<Decimal>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -243,7 +243,7 @@ impl EditOrderBuilder {
         let params = EditOrderParams {
             order_id: self.order_id,
             symbol: self.symbol,
-            token: token.to_string(),
+            token: super::RedactedToken::new(token),
             order_qty: self.order_qty,
             limit_price: self.limit_price,
             display_qty: self.display_qty,

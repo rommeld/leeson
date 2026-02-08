@@ -158,7 +158,7 @@ pub struct AddOrderParams {
     pub fee_preference: Option<FeeCurrencyPreference>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub no_mpp: Option<bool>,
-    pub token: String,
+    pub token: super::RedactedToken,
 }
 
 /// The add_order request message.
@@ -484,7 +484,7 @@ impl AddOrderBuilder {
             stp_type: self.stp_type,
             fee_preference: self.fee_preference,
             no_mpp: self.no_mpp,
-            token: token.to_string(),
+            token: super::RedactedToken::new(token),
         })
     }
 
@@ -644,8 +644,9 @@ mod tests {
 
     #[test]
     fn validate_stop_loss_requires_triggers() {
-        let result = AddOrderBuilder::new(OrderType::StopLoss, OrderSide::Sell, "BTC/USD", dec!(1.0))
-            .build("token");
+        let result =
+            AddOrderBuilder::new(OrderType::StopLoss, OrderSide::Sell, "BTC/USD", dec!(1.0))
+                .build("token");
 
         assert!(matches!(
             result,
@@ -687,8 +688,14 @@ mod tests {
 
         let response: AddOrderResponse = serde_json::from_str(json).unwrap();
         assert!(response.success);
-        assert_eq!(response.result.as_ref().unwrap().order_id, "OXXXXXX-XXXXX-XXXXXX");
-        assert_eq!(response.result.as_ref().unwrap().cl_ord_id, Some("my-order-1".to_string()));
+        assert_eq!(
+            response.result.as_ref().unwrap().order_id,
+            "OXXXXXX-XXXXX-XXXXXX"
+        );
+        assert_eq!(
+            response.result.as_ref().unwrap().cl_ord_id,
+            Some("my-order-1".to_string())
+        );
         assert_eq!(response.req_id, Some(42));
     }
 
@@ -704,21 +711,19 @@ mod tests {
 
         let response: AddOrderResponse = serde_json::from_str(json).unwrap();
         assert!(!response.success);
-        assert_eq!(response.error, Some("EOrder:Insufficient funds".to_string()));
+        assert_eq!(
+            response.error,
+            Some("EOrder:Insufficient funds".to_string())
+        );
         assert!(response.result.is_none());
     }
 
     #[test]
     fn iceberg_order_with_display_qty() {
-        let params = AddOrderBuilder::iceberg(
-            OrderSide::Buy,
-            "BTC/USD",
-            dec!(10),
-            dec!(50000),
-            dec!(1),
-        )
-        .build("token")
-        .unwrap();
+        let params =
+            AddOrderBuilder::iceberg(OrderSide::Buy, "BTC/USD", dec!(10), dec!(50000), dec!(1))
+                .build("token")
+                .unwrap();
 
         let json = serde_json::to_string(&AddOrderRequest::new(params, None)).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
