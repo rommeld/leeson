@@ -5,6 +5,7 @@ use std::time::Duration;
 use crossterm::event::{self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc;
 
+use crate::models::balance::BalanceResponse;
 use crate::models::book::BookUpdateResponse;
 use crate::models::candle::CandleUpdateResponse;
 use crate::models::execution::ExecutionUpdateResponse;
@@ -15,7 +16,7 @@ use crate::models::{
     StatusUpdateResponse,
 };
 
-use super::app::{App, Focus, MAX_ORDERBOOK_HISTORY, Mode, OrderBookSnapshot, Tab};
+use super::app::{App, AssetBalance, Focus, MAX_ORDERBOOK_HISTORY, Mode, OrderBookSnapshot, Tab};
 
 /// Events that can occur in the application.
 #[derive(Debug)]
@@ -44,6 +45,8 @@ pub enum Message {
     Candle(CandleUpdateResponse),
     /// Execution update from WebSocket.
     Execution(ExecutionUpdateResponse),
+    /// Balance update from WebSocket.
+    Balance(BalanceResponse),
     /// Status update from WebSocket.
     Status(StatusUpdateResponse),
     /// Heartbeat received.
@@ -124,17 +127,53 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
             None
         }
         Message::Book(response) => {
+            let is_snapshot = response.tpe == "snapshot";
+
             for data in response.data {
                 let state = app.orderbooks.entry(data.symbol.clone()).or_default();
-                state.bids = data.bids;
-                state.asks = data.asks;
+
+                if is_snapshot {
+                    // Snapshot: replace entire book
+                    state.bids = data.bids;
+                    state.asks = data.asks;
+                } else {
+                    // Update: apply incremental changes
+                    // A level with qty=0 means remove that price level
+                    for level in data.bids {
+                        if level.qty == rust_decimal::Decimal::ZERO {
+                            state.bids.retain(|b| b.price != level.price);
+                        } else if let Some(existing) =
+                            state.bids.iter_mut().find(|b| b.price == level.price)
+                        {
+                            existing.qty = level.qty;
+                        } else {
+                            state.bids.push(level);
+                            // Keep bids sorted highest to lowest
+                            state.bids.sort_by(|a, b| b.price.cmp(&a.price));
+                        }
+                    }
+                    for level in data.asks {
+                        if level.qty == rust_decimal::Decimal::ZERO {
+                            state.asks.retain(|a| a.price != level.price);
+                        } else if let Some(existing) =
+                            state.asks.iter_mut().find(|a| a.price == level.price)
+                        {
+                            existing.qty = level.qty;
+                        } else {
+                            state.asks.push(level);
+                            // Keep asks sorted lowest to highest
+                            state.asks.sort_by(|a, b| a.price.cmp(&b.price));
+                        }
+                    }
+                }
+
                 state.checksum = data.checksum;
                 state.last_update = Some(std::time::Instant::now());
 
-                // Capture snapshot for history
+                // Capture snapshot for history after updating state
                 if let (Some(best_bid), Some(best_ask)) = (state.bids.first(), state.asks.first()) {
                     let snapshot = OrderBookSnapshot {
-                        timestamp: std::time::Instant::now(),
+                        timestamp: data.timestamp.clone(),
                         best_bid: best_bid.price,
                         best_ask: best_ask.price,
                         spread: best_ask.price - best_bid.price,
@@ -198,6 +237,35 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                     }
                     _ => {}
                 }
+            }
+            None
+        }
+        Message::Balance(response) => {
+            // Process balance snapshot or update
+            for data in response.data {
+                let mut spot = rust_decimal::Decimal::ZERO;
+                let mut earn = rust_decimal::Decimal::ZERO;
+
+                for wallet in &data.wallets {
+                    match wallet.wallet_type.as_str() {
+                        "spot" => spot = wallet.balance,
+                        "earn" => earn = wallet.balance,
+                        _ => {}
+                    }
+                }
+
+                let balance = AssetBalance {
+                    asset: data.asset.clone(),
+                    total: data.balance,
+                    spot,
+                    earn,
+                };
+                app.asset_balances.insert(data.asset, balance);
+            }
+
+            // Update USD balance field for compatibility
+            if let Some(usd) = app.asset_balances.get("USD") {
+                app.balance = usd.total;
             }
             None
         }
