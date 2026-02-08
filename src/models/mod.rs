@@ -5,6 +5,7 @@
 
 pub mod add_order;
 pub mod book;
+pub mod cancel_order;
 pub mod candle;
 pub mod execution;
 pub mod instrument;
@@ -16,6 +17,10 @@ pub use add_order::{
     AddOrderBuilder, AddOrderError, AddOrderParams, AddOrderRequest, AddOrderResponse,
     AddOrderResult, ConditionalOrder, FeeCurrencyPreference, OrderSide, OrderType, StpType,
     TimeInForce, TriggerParams, TriggerPriceType, TriggerReference,
+};
+pub use cancel_order::{
+    CancelOrderBuilder, CancelOrderError, CancelOrderParams, CancelOrderRequest,
+    CancelOrderResponse, CancelOrderResult,
 };
 
 use serde::{Deserialize, Serialize};
