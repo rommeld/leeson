@@ -20,10 +20,10 @@ use crate::models::orders::OrdersUpdateResponse;
 use crate::models::ticker::TickerUpdateResponse;
 use crate::models::trade::TradeUpdateResponse;
 use crate::models::{
-    AddOrderRequest, AddOrderResponse, AmendOrderRequest, AmendOrderResponse, CancelAllRequest,
-    CancelAllResponse, CancelOrderRequest, CancelOrderResponse, Channel,
-    ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, PingRequest, PongResponse,
-    StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
+    AddOrderRequest, AddOrderResponse, AmendOrderRequest, AmendOrderResponse, CancelAfterRequest,
+    CancelAfterResponse, CancelAllRequest, CancelAllResponse, CancelOrderRequest,
+    CancelOrderResponse, Channel, ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest,
+    PingRequest, PongResponse, StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
 };
 
 /// Write half of a Kraken WebSocket connection.
@@ -237,6 +237,33 @@ pub async fn cancel_all(write: &mut WsWriter, request: CancelAllRequest) -> Resu
     Ok(())
 }
 
+/// Sends a cancel_after request to set or refresh the dead man's switch.
+///
+/// This implements a "Dead Man's Switch" mechanism that automatically cancels
+/// all orders if the countdown timer expires without being refreshed.
+///
+/// - Send with a timeout (e.g., 60 seconds) to start/refresh the countdown
+/// - Send periodically (e.g., every 15-30 seconds) to keep orders active
+/// - Send with timeout=0 to disable the feature
+///
+/// The response is handled in [`process_messages`].
+///
+/// # Errors
+///
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the request fails.
+pub async fn cancel_after(write: &mut WsWriter, request: CancelAfterRequest) -> Result<()> {
+    let json = serde_json::to_string(&request)?;
+    write.send(Message::Text(json.into())).await?;
+    info!(
+        method = "cancel_all_orders_after",
+        timeout = request.timeout(),
+        req_id = ?request.req_id(),
+        "Sent cancel_after request"
+    );
+
+    Ok(())
+}
+
 /// Sends an amend_order request to modify an existing order in-place.
 ///
 /// This is an RPC-style request that receives a single response indicating
@@ -353,6 +380,29 @@ pub async fn process_messages(read: &mut WsReader) -> Result<()> {
                         error = ?response.error,
                         req_id = ?response.req_id,
                         "Cancel all orders failed"
+                    );
+                }
+                continue;
+            }
+
+            if msg_method == Some("cancel_all_orders_after") {
+                let response: CancelAfterResponse = serde_json::from_value(value)?;
+                if response.success {
+                    if let Some(ref result) = response.result {
+                        info!(
+                            method = response.method,
+                            current_time = result.current_time,
+                            trigger_time = result.trigger_time,
+                            req_id = ?response.req_id,
+                            "Dead man's switch set successfully"
+                        );
+                    }
+                } else {
+                    warn!(
+                        method = response.method,
+                        error = ?response.error,
+                        req_id = ?response.req_id,
+                        "Dead man's switch failed"
                     );
                 }
                 continue;

@@ -1,9 +1,9 @@
 //! Serialization tests for WebSocket request types and Channel enum.
 
 use leeson::models::{
-    CancelAllRequest, CancelAllResponse, CancelOrderBuilder, CancelOrderResponse, Channel,
-    ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, PingRequest, SubscribeRequest,
-    UnsubscribeRequest,
+    CancelAfterRequest, CancelAfterResponse, CancelAllRequest, CancelAllResponse,
+    CancelOrderBuilder, CancelOrderResponse, Channel, ExecutionsSubscribeRequest,
+    ExecutionsUnsubscribeRequest, PingRequest, SubscribeRequest, UnsubscribeRequest,
 };
 
 #[test]
@@ -312,5 +312,80 @@ fn test_cancel_all_error_response_deserializes() {
     assert_eq!(response.method, "cancel_all");
     assert!(!response.success);
     assert_eq!(response.error, Some("EGeneral:Permission denied".to_string()));
+    assert!(response.result.is_none());
+}
+
+// Dead Man's Switch (cancel_after) tests
+
+#[test]
+fn test_cancel_after_request_serializes() {
+    let request = CancelAfterRequest::new(60, "ws-token-123", Some(1234567890));
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize cancel_after request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "cancel_all_orders_after");
+    assert_eq!(value["req_id"], 1234567890);
+    assert_eq!(value["params"]["timeout"], 60);
+    assert_eq!(value["params"]["token"], "ws-token-123");
+}
+
+#[test]
+fn test_cancel_after_disable_request_serializes() {
+    let request = CancelAfterRequest::disable("ws-token-123", None);
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize cancel_after request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "cancel_all_orders_after");
+    assert_eq!(value["params"]["timeout"], 0);
+    assert!(value.get("req_id").is_none());
+}
+
+#[test]
+fn test_cancel_after_success_response_deserializes() {
+    let json = r#"{
+        "method": "cancel_all_orders_after",
+        "req_id": 1234567890,
+        "result": {
+            "currentTime": "2023-09-21T15:49:29Z",
+            "triggerTime": "2023-09-21T15:51:09Z"
+        },
+        "success": true,
+        "time_in": "2023-09-21T15:49:28.627900Z",
+        "time_out": "2023-09-21T15:49:28.649057Z"
+    }"#;
+
+    let response: CancelAfterResponse =
+        serde_json::from_str(json).expect("Failed to deserialize cancel_after response");
+
+    assert_eq!(response.method, "cancel_all_orders_after");
+    assert!(response.success);
+    assert_eq!(response.req_id, Some(1234567890));
+    assert!(response.result.is_some());
+
+    let result = response.result.unwrap();
+    assert_eq!(result.current_time, "2023-09-21T15:49:29Z");
+    assert_eq!(result.trigger_time, "2023-09-21T15:51:09Z");
+}
+
+#[test]
+fn test_cancel_after_error_response_deserializes() {
+    let json = r#"{
+        "method": "cancel_all_orders_after",
+        "success": false,
+        "error": "EGeneral:Invalid arguments",
+        "time_in": "2023-09-21T15:49:28.627900Z",
+        "time_out": "2023-09-21T15:49:28.649057Z"
+    }"#;
+
+    let response: CancelAfterResponse =
+        serde_json::from_str(json).expect("Failed to deserialize cancel_after error response");
+
+    assert_eq!(response.method, "cancel_all_orders_after");
+    assert!(!response.success);
+    assert_eq!(response.error, Some("EGeneral:Invalid arguments".to_string()));
     assert!(response.result.is_none());
 }

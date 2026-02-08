@@ -6,6 +6,7 @@
 pub mod add_order;
 pub mod amend_order;
 pub mod book;
+pub mod cancel_after;
 pub mod cancel_all;
 pub mod cancel_order;
 pub mod candle;
@@ -23,6 +24,9 @@ pub use add_order::{
 pub use amend_order::{
     AmendOrderBuilder, AmendOrderError, AmendOrderParams, AmendOrderRequest, AmendOrderResponse,
     AmendOrderResult, PriceType,
+};
+pub use cancel_after::{
+    CancelAfterRequest, CancelAfterResponse, CancelAfterResult, MAX_TIMEOUT_SECONDS,
 };
 pub use cancel_all::{CancelAllRequest, CancelAllResponse, CancelAllResult};
 pub use cancel_order::{
