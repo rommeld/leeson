@@ -44,17 +44,17 @@ pub async fn get_websocket_token(api_key: &str, api_secret: &str) -> Result<Stri
     let body: serde_json::Value = response.json().await?;
 
     let errors = body["error"].as_array();
-    if let Some(errors) = errors {
-        if !errors.is_empty() {
-            let messages: Vec<String> = errors
-                .iter()
-                .filter_map(|e| e.as_str().map(String::from))
-                .collect();
-            return Err(crate::LeesonError::MalformedMessage(format!(
-                "Kraken API error: {}",
-                messages.join(", ")
-            )));
-        }
+    if let Some(errors) = errors
+        && !errors.is_empty()
+    {
+        let messages: Vec<String> = errors
+            .iter()
+            .filter_map(|e| e.as_str().map(String::from))
+            .collect();
+        return Err(crate::LeesonError::MalformedMessage(format!(
+            "Kraken API error: {}",
+            messages.join(", ")
+        )));
     }
 
     let token = body["result"]["token"]
