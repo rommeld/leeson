@@ -3,17 +3,22 @@
 //! [`ConnectionManager`] handles connecting, reading messages, automatic
 //! reconnection with exponential backoff, token refresh before expiry,
 //! and re-subscription to all active channels after each reconnect.
+//!
+//! Maintains two connections:
+//! - Public: `wss://ws.kraken.com/v2` for market data (ticker, book, ohlc, trade)
+//! - Private: `wss://ws-auth.kraken.com/v2` for authenticated channels (executions, balances)
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use futures_util::StreamExt;
 use tokio::sync::mpsc;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use tungstenite::Message as WsMessage;
 
 use super::{
-    WsWriter, connect, ping, subscribe, subscribe_book, subscribe_executions, subscribe_instrument,
+    WsReader, WsWriter, connect, ping, subscribe, subscribe_balances, subscribe_book,
+    subscribe_executions, subscribe_instrument,
 };
 use crate::auth::get_websocket_token;
 use crate::models::Channel;
@@ -28,6 +33,12 @@ const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
 
 /// Maximum backoff duration between reconnection attempts.
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
+
+/// Public WebSocket endpoint for market data.
+const PUBLIC_WS_URL: &str = "wss://ws.kraken.com/v2";
+
+/// Private WebSocket endpoint for authenticated channels.
+const PRIVATE_WS_URL: &str = "wss://ws-auth.kraken.com/v2";
 
 /// Commands sent from the main loop to the connection manager.
 pub enum ConnectionCommand {
@@ -49,8 +60,11 @@ enum DisconnectReason {
 
 /// Manages the WebSocket connection lifecycle including reconnection
 /// with exponential backoff and token refresh before expiry.
+///
+/// Maintains two connections:
+/// - Public: for market data (ticker, book, ohlc, trade)
+/// - Private: for authenticated channels (executions, balances)
 pub struct ConnectionManager {
-    url: String,
     tls_config: Arc<rustls::ClientConfig>,
     api_key: Option<String>,
     api_secret: Option<String>,
@@ -64,7 +78,7 @@ impl ConnectionManager {
     /// Creates a new connection manager.
     #[must_use]
     pub fn new(
-        url: String,
+        _url: String, // Ignored - we use fixed endpoints
         tls_config: Arc<rustls::ClientConfig>,
         api_key: Option<String>,
         api_secret: Option<String>,
@@ -73,7 +87,6 @@ impl ConnectionManager {
         cmd_rx: mpsc::UnboundedReceiver<ConnectionCommand>,
     ) -> Self {
         Self {
-            url,
             tls_config,
             api_key,
             api_secret,
@@ -114,50 +127,53 @@ impl ConnectionManager {
         }
     }
 
-    /// Subscribes to all tracked channels on the given writer.
-    async fn resubscribe_all(&self, write: &mut WsWriter, token: Option<&str>) {
+    /// Subscribes to public channels (market data) on the given writer.
+    async fn subscribe_public(&self, write: &mut WsWriter) {
         if let Err(e) = subscribe_instrument(write).await {
             warn!("Failed to subscribe to instruments: {e}");
         }
 
-        if !self.subscribed_pairs.is_empty() {
-            for symbol in &self.subscribed_pairs {
-                let symbols = vec![symbol.clone()];
-                let _ = subscribe(write, &Channel::Ticker, &symbols, None).await;
-                let _ = subscribe_book(write, &symbols, BookDepth::D25, None).await;
-                let _ = subscribe(write, &Channel::Candles, &symbols, None).await;
-                let _ = subscribe(write, &Channel::Trades, &symbols, None).await;
-            }
+        for symbol in &self.subscribed_pairs {
+            let symbols = vec![symbol.clone()];
+            let _ = subscribe(write, &Channel::Ticker, &symbols, None).await;
+            let _ = subscribe_book(write, &symbols, BookDepth::D25, None).await;
+            let _ = subscribe(write, &Channel::Candles, &symbols, None).await;
+            let _ = subscribe(write, &Channel::Trades, &symbols, None).await;
         }
+    }
 
-        if let Some(token) = token {
-            if let Err(e) = subscribe_executions(write, token, true, false).await {
-                warn!("Failed to subscribe to executions: {e}");
-            }
+    /// Subscribes to private channels (authenticated) on the given writer.
+    async fn subscribe_private(&self, write: &mut WsWriter, token: &str) {
+        if let Err(e) = subscribe_executions(write, token, true, false).await {
+            warn!("Failed to subscribe to executions: {e}");
+        }
+        if let Err(e) = subscribe_balances(write, token, true).await {
+            warn!("Failed to subscribe to balances: {e}");
         }
     }
 
     /// Runs the connection manager loop indefinitely.
     ///
-    /// Connects to the WebSocket, reads messages, and automatically
-    /// reconnects with exponential backoff on disconnection. Refreshes
-    /// the auth token before it expires.
+    /// Connects to both public and private WebSocket endpoints,
+    /// reads messages, and automatically reconnects with exponential
+    /// backoff on disconnection. Refreshes the auth token before it expires.
     pub async fn run(mut self) {
         let mut backoff = INITIAL_BACKOFF;
 
         loop {
-            // Notify UI we're reconnecting (skip on first connect)
+            // Notify UI we're reconnecting
             let _ = self.tx.send(Message::Reconnecting);
 
-            // Fetch a token if we have credentials
+            // Fetch a token if we have credentials (for private connection)
             let token = self.fetch_token().await;
 
-            // Attempt connection
-            info!(url = %self.url, "Connecting to WebSocket");
-            let (mut write, read) = match connect(&self.url, self.tls_config.clone()).await {
+            // Connect to PUBLIC endpoint for market data
+            info!(url = %PUBLIC_WS_URL, "Connecting to public WebSocket");
+            let public_result = connect(PUBLIC_WS_URL, self.tls_config.clone()).await;
+            let (mut public_write, public_read) = match public_result {
                 Ok(pair) => pair,
                 Err(e) => {
-                    error!("Connection failed: {e}");
+                    error!("Public connection failed: {e}");
                     let _ = self.tx.send(Message::Disconnected);
                     info!(backoff_secs = backoff.as_secs(), "Backing off before retry");
                     tokio::time::sleep(backoff).await;
@@ -166,24 +182,47 @@ impl ConnectionManager {
                 }
             };
 
-            // Connected — ping and subscribe
-            if let Err(e) = ping(&mut write).await {
-                warn!("Ping failed: {e}");
+            // Ping and subscribe on public connection
+            if let Err(e) = ping(&mut public_write).await {
+                warn!("Public ping failed: {e}");
                 let _ = self.tx.send(Message::Disconnected);
                 tokio::time::sleep(backoff).await;
                 backoff = (backoff * 2).min(MAX_BACKOFF);
                 continue;
             }
 
-            self.resubscribe_all(&mut write, token.as_deref()).await;
+            self.subscribe_public(&mut public_write).await;
+            info!("Public WebSocket connected and subscribed");
 
-            // Hand the writer to the main loop
+            // Connect to PRIVATE endpoint if we have credentials
+            let private_connection = if let Some(ref token_str) = token {
+                info!(url = %PRIVATE_WS_URL, "Connecting to private WebSocket");
+                match connect(PRIVATE_WS_URL, self.tls_config.clone()).await {
+                    Ok((mut private_write, private_read)) => {
+                        if let Err(e) = ping(&mut private_write).await {
+                            warn!("Private ping failed: {e}");
+                            None
+                        } else {
+                            self.subscribe_private(&mut private_write, token_str).await;
+                            info!("Private WebSocket connected and subscribed");
+                            Some((private_write, private_read))
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Private connection failed (continuing with public only): {e}");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            // Hand the public writer to the main loop (for sending subscriptions)
             {
                 let mut guard = self.writer.lock().await;
-                *guard = Some(write);
+                *guard = Some(public_write);
             }
             let _ = self.tx.send(Message::Connected);
-            info!("WebSocket connected and subscribed");
 
             // Reset backoff on successful connection
             backoff = INITIAL_BACKOFF;
@@ -191,7 +230,12 @@ impl ConnectionManager {
             // Enter reader loop
             let token_fetched_at = Instant::now();
             let reason = self
-                .read_loop(read, token.as_deref(), token_fetched_at)
+                .read_loop(
+                    public_read,
+                    private_connection,
+                    token.as_deref(),
+                    token_fetched_at,
+                )
                 .await;
 
             // Clear the writer so the main loop doesn't use a stale one
@@ -222,14 +266,18 @@ impl ConnectionManager {
         }
     }
 
-    /// Reads messages from the WebSocket until disconnection, token
-    /// expiry, or shutdown.
+    /// Reads messages from both WebSocket connections until disconnection,
+    /// token expiry, or shutdown.
     async fn read_loop(
         &mut self,
-        mut read: super::WsReader,
+        mut public_read: WsReader,
+        private_connection: Option<(WsWriter, WsReader)>,
         token: Option<&str>,
         token_fetched_at: Instant,
     ) -> DisconnectReason {
+        // Split private connection if available
+        let mut private_read = private_connection.map(|(_, read)| read);
+
         // Build the token refresh deadline
         let refresh_deadline = if token.is_some() {
             Some(tokio::time::Instant::from_std(
@@ -249,25 +297,54 @@ impl ConnectionManager {
 
         loop {
             tokio::select! {
-                msg = read.next() => {
+                // Read from public connection
+                msg = public_read.next() => {
                     match msg {
                         Some(Ok(WsMessage::Text(text))) => {
-                            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
-                                if let Some(message) = parse_ws_message(value) {
-                                    if self.tx.send(message).is_err() {
+                            debug!("Public WS message: {}", text);
+                            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text)
+                                && let Some(message) = parse_ws_message(value)
+                                    && self.tx.send(message).is_err() {
                                         return DisconnectReason::Shutdown;
                                     }
-                                }
-                            }
                         }
                         Some(Ok(_)) => {} // Binary/Ping/Pong/Close frames
                         Some(Err(e)) => {
-                            warn!("WebSocket error: {e}");
+                            warn!("Public WebSocket error: {e}");
                             return DisconnectReason::ConnectionError;
                         }
                         None => {
-                            warn!("WebSocket stream ended");
+                            warn!("Public WebSocket stream ended");
                             return DisconnectReason::ConnectionError;
+                        }
+                    }
+                }
+
+                // Read from private connection (if available)
+                msg = async {
+                    match &mut private_read {
+                        Some(read) => read.next().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    match msg {
+                        Some(Ok(WsMessage::Text(text))) => {
+                            debug!("Private WS message: {}", text);
+                            if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text)
+                                && let Some(message) = parse_ws_message(value)
+                                    && self.tx.send(message).is_err() {
+                                        return DisconnectReason::Shutdown;
+                                    }
+                        }
+                        Some(Ok(_)) => {} // Binary/Ping/Pong/Close frames
+                        Some(Err(e)) => {
+                            warn!("Private WebSocket error: {e}");
+                            // Don't fail completely, just log and continue with public
+                            private_read = None;
+                        }
+                        None => {
+                            warn!("Private WebSocket stream ended");
+                            private_read = None;
                         }
                     }
                 }
@@ -307,6 +384,16 @@ fn parse_ws_message(value: serde_json::Value) -> Option<Message> {
     if let Some(method) = method {
         return match method {
             "pong" => None,
+            "subscribe" => {
+                // Log subscription responses but don't forward
+                if let Some(success) = value.get("success").and_then(|s| s.as_bool())
+                    && !success
+                    && let Some(error) = value.get("error").and_then(|e| e.as_str())
+                {
+                    warn!("Subscription failed: {}", error);
+                }
+                None
+            }
             "add_order" => serde_json::from_value(value).ok().map(Message::OrderPlaced),
             "cancel_order" => serde_json::from_value(value)
                 .ok()
@@ -323,19 +410,83 @@ fn parse_ws_message(value: serde_json::Value) -> Option<Message> {
 
     // Handle channel messages
     if let Some(channel) = channel {
-        // Skip snapshots for data channels (except executions)
-        if channel != "executions" && msg_type != Some("update") {
+        // Channels that need both snapshots and updates
+        // - ticker: snapshot for initial price, updates for changes
+        // - book: snapshot for initial order book, updates for changes
+        // - ohlc: snapshot for historical candles, updates for current candle
+        // - executions/balances: authenticated channels need both
+        // - trade: only updates (real-time trades as they happen)
+        let needs_snapshot = matches!(
+            channel,
+            "ticker" | "book" | "ohlc" | "executions" | "balances"
+        );
+
+        // Skip snapshots for channels that only need updates (trade)
+        if !needs_snapshot && msg_type != Some("update") {
             return None;
         }
 
         return match channel {
             "heartbeat" => Some(Message::Heartbeat),
             "status" => serde_json::from_value(value).ok().map(Message::Status),
-            "ticker" => serde_json::from_value(value).ok().map(Message::Ticker),
-            "book" => serde_json::from_value(value).ok().map(Message::Book),
-            "trade" => serde_json::from_value(value).ok().map(Message::Trade),
-            "ohlc" => serde_json::from_value(value).ok().map(Message::Candle),
+            "ticker" => {
+                debug!("Received ticker: {:?}", value);
+                match serde_json::from_value(value.clone()) {
+                    Ok(v) => Some(Message::Ticker(v)),
+                    Err(e) => {
+                        warn!("Failed to parse ticker: {e}");
+                        debug!("Raw ticker: {}", value);
+                        None
+                    }
+                }
+            }
+            "book" => {
+                debug!("Received book: {:?}", value);
+                match serde_json::from_value(value.clone()) {
+                    Ok(v) => Some(Message::Book(v)),
+                    Err(e) => {
+                        warn!("Failed to parse book: {e}");
+                        debug!("Raw book: {}", value);
+                        None
+                    }
+                }
+            }
+            "trade" => {
+                debug!("Received trade: {:?}", value);
+                match serde_json::from_value(value.clone()) {
+                    Ok(v) => Some(Message::Trade(v)),
+                    Err(e) => {
+                        warn!("Failed to parse trade: {e}");
+                        debug!("Raw trade: {}", value);
+                        None
+                    }
+                }
+            }
+            "ohlc" => {
+                debug!("Received ohlc: {:?}", value);
+                match serde_json::from_value(value.clone()) {
+                    Ok(v) => Some(Message::Candle(v)),
+                    Err(e) => {
+                        warn!("Failed to parse ohlc: {e}");
+                        debug!("Raw ohlc: {}", value);
+                        None
+                    }
+                }
+            }
             "executions" => serde_json::from_value(value).ok().map(Message::Execution),
+            "balances" => {
+                debug!("Received balances message: {:?}", value);
+                match serde_json::from_value::<crate::models::balance::BalanceResponse>(
+                    value.clone(),
+                ) {
+                    Ok(response) => Some(Message::Balance(response)),
+                    Err(e) => {
+                        warn!("Failed to parse balances message: {e}");
+                        debug!("Raw balances payload: {}", value);
+                        None
+                    }
+                }
+            }
             _ => None,
         };
     }

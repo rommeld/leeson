@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use leeson::LeesonError;
+use leeson::auth::validate_credentials;
 use leeson::config::fetch_config;
 use leeson::models::Channel;
 use leeson::models::book::BookDepth;
@@ -12,21 +13,53 @@ use leeson::websocket::{ConnectionCommand, ConnectionManager, subscribe, subscri
 
 #[tokio::main]
 async fn main() -> Result<(), LeesonError> {
+    // Set up file logging (logs to leeson.log)
+    let file = std::fs::File::create("leeson.log").expect("Failed to create log file");
+    tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_writer(file)
+        .with_ansi(false)
+        .init();
+
     let app_config = fetch_config()?;
     let tls_config = Arc::new(build_tls_config()?);
 
-    let url = app_config.kraken.websocket_url.clone();
     let has_credentials = matches!(
         (&app_config.kraken.api_key, &app_config.kraken.api_secret),
         (Some(k), Some(s)) if !k.is_empty() && !s.is_empty()
     );
+
+    // Validate API credentials if provided
+    let (credentials_valid, auth_error) = if has_credentials {
+        let key = app_config.kraken.api_key.as_ref().unwrap();
+        let secret = app_config.kraken.api_secret.as_ref().unwrap();
+        match validate_credentials(key, secret, (*tls_config).clone()).await {
+            Ok(_) => (true, None),
+            Err(e) => (false, Some(e.to_string())),
+        }
+    } else {
+        (false, None)
+    };
+
+    // Use authenticated endpoint if credentials are valid, otherwise use configured URL
+    // The balances channel requires the authenticated endpoint
+    let url = if credentials_valid {
+        "wss://ws-auth.kraken.com/v2".to_string()
+    } else {
+        app_config.kraken.websocket_url.clone()
+    };
 
     // Setup terminal
     let mut terminal = tui::setup_terminal()?;
 
     // Create application state
     let mut app = App::new();
-    app.authenticated = has_credentials;
+    app.authenticated = credentials_valid;
+
+    // Show auth error if credentials were provided but invalid
+    if let Some(error) = auth_error {
+        app.show_error(format!("Auth failed: {}", error));
+    }
 
     // Create message channel (shared with connection manager)
     let (tx, mut rx) = mpsc::unbounded_channel::<Message>();

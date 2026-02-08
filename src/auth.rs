@@ -22,6 +22,24 @@ use crate::Result;
 const TOKEN_URL: &str = "https://api.kraken.com/0/private/GetWebSocketsToken";
 const URL_PATH: &str = "/0/private/GetWebSocketsToken";
 
+/// Validates API credentials by attempting to fetch a WebSocket token.
+///
+/// Returns `Ok(token)` if credentials are valid, or an error describing the failure.
+///
+/// # Errors
+///
+/// Returns a [`LeesonError`](crate::LeesonError) if:
+/// - The HTTP request fails
+/// - The API returns an authentication error (invalid key/secret)
+/// - The response cannot be parsed
+pub async fn validate_credentials(
+    api_key: &str,
+    api_secret: &str,
+    tls_config: rustls::ClientConfig,
+) -> Result<String> {
+    get_websocket_token(api_key, api_secret, tls_config).await
+}
+
 /// Fetches a short-lived WebSocket authentication token from the Kraken REST API.
 ///
 /// # Errors
