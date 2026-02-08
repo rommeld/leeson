@@ -4,6 +4,7 @@
 //! and common protocol messages (ping/pong, heartbeat, status).
 
 pub mod add_order;
+pub mod amend_order;
 pub mod book;
 pub mod cancel_order;
 pub mod candle;
@@ -17,6 +18,10 @@ pub use add_order::{
     AddOrderBuilder, AddOrderError, AddOrderParams, AddOrderRequest, AddOrderResponse,
     AddOrderResult, ConditionalOrder, FeeCurrencyPreference, OrderSide, OrderType, StpType,
     TimeInForce, TriggerParams, TriggerPriceType, TriggerReference,
+};
+pub use amend_order::{
+    AmendOrderBuilder, AmendOrderError, AmendOrderParams, AmendOrderRequest, AmendOrderResponse,
+    AmendOrderResult, PriceType,
 };
 pub use cancel_order::{
     CancelOrderBuilder, CancelOrderError, CancelOrderParams, CancelOrderRequest,

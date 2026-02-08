@@ -2,6 +2,7 @@
 
 use rust_decimal_macros::dec;
 
+use leeson::models::amend_order::{AmendOrderResponse, AmendOrderResult};
 use leeson::models::book::{BookData, BookUpdateResponse, PriceLevel};
 use leeson::models::candle::{CandleData, CandleUpdateResponse};
 use leeson::models::execution::{ExecutionData, ExecutionUpdateResponse, Fee};
@@ -21,6 +22,8 @@ const EXECUTION_JSON: &str = include_str!("fixtures/execution.json");
 const PONG_JSON: &str = include_str!("fixtures/pong.json");
 const STATUS_JSON: &str = include_str!("fixtures/status.json");
 const HEARTBEAT_JSON: &str = include_str!("fixtures/heartbeat.json");
+const AMEND_ORDER_SUCCESS_JSON: &str = include_str!("fixtures/amend_order_success.json");
+const AMEND_ORDER_ERROR_JSON: &str = include_str!("fixtures/amend_order_error.json");
 
 #[test]
 fn test_ticker_update_response_deserializes() {
@@ -267,4 +270,35 @@ fn test_heartbeat_response_deserializes() {
         serde_json::from_str(HEARTBEAT_JSON).expect("Failed to deserialize heartbeat response");
 
     assert_eq!(response.channel, "heartbeat");
+}
+
+#[test]
+fn test_amend_order_success_response_deserializes() {
+    let response: AmendOrderResponse = serde_json::from_str(AMEND_ORDER_SUCCESS_JSON)
+        .expect("Failed to deserialize amend_order success response");
+
+    assert!(response.success);
+    assert_eq!(response.method, "amend_order");
+    assert_eq!(response.time_in, "2024-07-26T13:39:04.922699Z");
+    assert_eq!(response.time_out, "2024-07-26T13:39:04.924912Z");
+
+    let result: &AmendOrderResult = response.result.as_ref().expect("Expected result");
+    assert_eq!(result.amend_id, "TTW6PD-RC36L-ZZSWNU");
+    assert_eq!(
+        result.cl_ord_id,
+        Some("2c6be801-1f53-4f79-a0bb-4ea1c95dfae9".to_string())
+    );
+    assert!(result.order_id.is_none());
+    assert!(response.error.is_none());
+}
+
+#[test]
+fn test_amend_order_error_response_deserializes() {
+    let response: AmendOrderResponse = serde_json::from_str(AMEND_ORDER_ERROR_JSON)
+        .expect("Failed to deserialize amend_order error response");
+
+    assert!(!response.success);
+    assert_eq!(response.method, "amend_order");
+    assert_eq!(response.error, Some("EOrder:Unknown order".to_string()));
+    assert!(response.result.is_none());
 }
