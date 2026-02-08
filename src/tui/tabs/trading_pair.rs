@@ -132,6 +132,11 @@ fn render_orderbook(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
 
     let mut lines: Vec<Line> = Vec::new();
 
+    // Calculate how many levels to show per side
+    // Reserve 3 lines for: ASK header, spread, BID header
+    let available_height = inner.height.saturating_sub(3) as usize;
+    let levels_per_side = (available_height / 2).clamp(1, 20);
+
     // ASK header
     lines.push(Line::from(Span::styled(
         "ASK",
@@ -139,15 +144,21 @@ fn render_orderbook(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
     )));
 
     if let Some(ob) = orderbook {
-        // Show asks (reversed so lowest ask is at bottom)
-        let max_qty = ob.asks.iter().map(|a| a.qty).max().unwrap_or(Decimal::ONE);
+        // Show asks (reversed so lowest ask is at bottom, closest to spread)
+        let max_qty = ob
+            .asks
+            .iter()
+            .take(levels_per_side)
+            .map(|a| a.qty)
+            .max()
+            .unwrap_or(Decimal::ONE);
 
-        for ask in ob.asks.iter().take(5).rev() {
-            let bar_len = ((ask.qty / max_qty) * Decimal::from(20))
+        for ask in ob.asks.iter().take(levels_per_side).rev() {
+            let bar_len = ((ask.qty / max_qty) * Decimal::from(15))
                 .to_string()
                 .parse::<usize>()
                 .unwrap_or(1);
-            let bar = "▒".repeat(bar_len.min(20));
+            let bar = "▒".repeat(bar_len.min(15));
 
             lines.push(Line::from(vec![
                 Span::styled(
@@ -162,8 +173,9 @@ fn render_orderbook(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
         // Spread line
         if let (Some(best_bid), Some(best_ask)) = (ob.bids.first(), ob.asks.first()) {
             let spread = best_ask.price - best_bid.price;
+            let spread_pct = (spread / best_bid.price) * Decimal::from(100);
             lines.push(Line::from(Span::styled(
-                format!("─── Spread: {:.2} ───", spread),
+                format!("─── Spread: {:.2} ({:.3}%) ───", spread, spread_pct),
                 Style::default().fg(Color::DarkGray),
             )));
         }
@@ -176,14 +188,20 @@ fn render_orderbook(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
                 .add_modifier(Modifier::BOLD),
         )));
 
-        let max_qty = ob.bids.iter().map(|b| b.qty).max().unwrap_or(Decimal::ONE);
+        let max_qty = ob
+            .bids
+            .iter()
+            .take(levels_per_side)
+            .map(|b| b.qty)
+            .max()
+            .unwrap_or(Decimal::ONE);
 
-        for bid in ob.bids.iter().take(5) {
-            let bar_len = ((bid.qty / max_qty) * Decimal::from(20))
+        for bid in ob.bids.iter().take(levels_per_side) {
+            let bar_len = ((bid.qty / max_qty) * Decimal::from(15))
                 .to_string()
                 .parse::<usize>()
                 .unwrap_or(1);
-            let bar = "▒".repeat(bar_len.min(20));
+            let bar = "▒".repeat(bar_len.min(15));
 
             lines.push(Line::from(vec![
                 Span::styled(
