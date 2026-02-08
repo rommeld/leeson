@@ -17,6 +17,9 @@ const MAX_HISTORY_SIZE: usize = 100;
 /// Maximum number of agent output lines per panel.
 const MAX_AGENT_OUTPUT_LINES: usize = 50;
 
+/// Maximum number of order book snapshots to retain in history.
+pub const MAX_ORDERBOOK_HISTORY: usize = 20;
+
 /// Central application state container.
 pub struct App {
     // -- Tab State --
@@ -419,6 +422,21 @@ pub struct OrderBookState {
     pub checksum: u32,
     /// Last update time.
     pub last_update: Option<Instant>,
+    /// Historical snapshots of best bid/ask.
+    pub history: VecDeque<OrderBookSnapshot>,
+}
+
+/// A historical snapshot of order book state.
+#[derive(Clone, Debug)]
+pub struct OrderBookSnapshot {
+    /// When this snapshot was taken.
+    pub timestamp: Instant,
+    /// Best bid price at the time.
+    pub best_bid: Decimal,
+    /// Best ask price at the time.
+    pub best_ask: Decimal,
+    /// Spread (best_ask - best_bid).
+    pub spread: Decimal,
 }
 
 /// An executed trade for display in the all-trades table.

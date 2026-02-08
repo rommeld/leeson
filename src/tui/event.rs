@@ -15,7 +15,7 @@ use crate::models::{
     StatusUpdateResponse,
 };
 
-use super::app::{App, Focus, Mode, Tab};
+use super::app::{App, Focus, Mode, OrderBookSnapshot, Tab, MAX_ORDERBOOK_HISTORY};
 
 /// Events that can occur in the application.
 #[derive(Debug)]
@@ -130,6 +130,20 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                 state.asks = data.asks;
                 state.checksum = data.checksum;
                 state.last_update = Some(std::time::Instant::now());
+
+                // Capture snapshot for history
+                if let (Some(best_bid), Some(best_ask)) = (state.bids.first(), state.asks.first()) {
+                    let snapshot = OrderBookSnapshot {
+                        timestamp: std::time::Instant::now(),
+                        best_bid: best_bid.price,
+                        best_ask: best_ask.price,
+                        spread: best_ask.price - best_bid.price,
+                    };
+                    if state.history.len() >= MAX_ORDERBOOK_HISTORY {
+                        state.history.pop_front();
+                    }
+                    state.history.push_back(snapshot);
+                }
             }
             None
         }
