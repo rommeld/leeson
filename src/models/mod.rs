@@ -5,6 +5,7 @@
 
 pub mod add_order;
 pub mod amend_order;
+pub mod batch_add;
 pub mod book;
 pub mod cancel_after;
 pub mod cancel_all;
@@ -24,6 +25,10 @@ pub use add_order::{
 pub use amend_order::{
     AmendOrderBuilder, AmendOrderError, AmendOrderParams, AmendOrderRequest, AmendOrderResponse,
     AmendOrderResult, PriceType,
+};
+pub use batch_add::{
+    BatchAddBuilder, BatchAddError, BatchAddRequest, BatchAddResponse, BatchAddOrderResult,
+    BatchOrderEntry, MAX_BATCH_SIZE, MIN_BATCH_SIZE,
 };
 pub use cancel_after::{
     CancelAfterRequest, CancelAfterResponse, CancelAfterResult, MAX_TIMEOUT_SECONDS,

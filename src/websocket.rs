@@ -20,10 +20,11 @@ use crate::models::orders::OrdersUpdateResponse;
 use crate::models::ticker::TickerUpdateResponse;
 use crate::models::trade::TradeUpdateResponse;
 use crate::models::{
-    AddOrderRequest, AddOrderResponse, AmendOrderRequest, AmendOrderResponse, CancelAfterRequest,
-    CancelAfterResponse, CancelAllRequest, CancelAllResponse, CancelOrderRequest,
-    CancelOrderResponse, Channel, ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest,
-    PingRequest, PongResponse, StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
+    AddOrderRequest, AddOrderResponse, AmendOrderRequest, AmendOrderResponse, BatchAddRequest,
+    BatchAddResponse, CancelAfterRequest, CancelAfterResponse, CancelAllRequest, CancelAllResponse,
+    CancelOrderRequest, CancelOrderResponse, Channel, ExecutionsSubscribeRequest,
+    ExecutionsUnsubscribeRequest, PingRequest, PongResponse, StatusUpdateResponse,
+    SubscribeRequest, UnsubscribeRequest,
 };
 
 /// Write half of a Kraken WebSocket connection.
@@ -197,6 +198,28 @@ pub async fn add_order(write: &mut WsWriter, request: AddOrderRequest) -> Result
     Ok(())
 }
 
+/// Sends a batch_add request to place multiple orders at once.
+///
+/// All orders in the batch must target the same currency pair. The batch
+/// must contain between 2 and 15 orders. If validation fails for any order,
+/// the entire batch is rejected. The response is handled in [`process_messages`].
+///
+/// # Errors
+///
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the request fails.
+pub async fn batch_add(write: &mut WsWriter, request: BatchAddRequest) -> Result<()> {
+    let json = serde_json::to_string(&request)?;
+    write.send(Message::Text(json.into())).await?;
+    info!(
+        method = "batch_add",
+        order_count = request.order_count(),
+        req_id = ?request.req_id(),
+        "Sent batch_add request"
+    );
+
+    Ok(())
+}
+
 /// Sends a cancel_order request to cancel one or more orders.
 ///
 /// This is an RPC-style request that receives a response for each order
@@ -335,6 +358,36 @@ pub async fn process_messages(read: &mut WsReader) -> Result<()> {
                         error = ?response.error,
                         req_id = ?response.req_id,
                         "Order placement failed"
+                    );
+                }
+                continue;
+            }
+
+            if msg_method == Some("batch_add") {
+                let response: BatchAddResponse = serde_json::from_value(value)?;
+                if response.success {
+                    if let Some(ref results) = response.result {
+                        info!(
+                            method = response.method,
+                            order_count = results.len(),
+                            req_id = ?response.req_id,
+                            "Batch orders placed successfully"
+                        );
+                        for result in results {
+                            debug!(
+                                order_id = result.order_id,
+                                cl_ord_id = ?result.cl_ord_id,
+                                order_userref = ?result.order_userref,
+                                "Batch order"
+                            );
+                        }
+                    }
+                } else {
+                    warn!(
+                        method = response.method,
+                        error = ?response.error,
+                        req_id = ?response.req_id,
+                        "Batch order placement failed"
                     );
                 }
                 continue;

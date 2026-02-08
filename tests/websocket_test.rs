@@ -1,10 +1,12 @@
 //! Serialization tests for WebSocket request types and Channel enum.
 
 use leeson::models::{
-    CancelAfterRequest, CancelAfterResponse, CancelAllRequest, CancelAllResponse,
-    CancelOrderBuilder, CancelOrderResponse, Channel, ExecutionsSubscribeRequest,
-    ExecutionsUnsubscribeRequest, PingRequest, SubscribeRequest, UnsubscribeRequest,
+    BatchAddBuilder, BatchAddResponse, BatchOrderEntry, CancelAfterRequest, CancelAfterResponse,
+    CancelAllRequest, CancelAllResponse, CancelOrderBuilder, CancelOrderResponse, Channel,
+    ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, OrderSide, PingRequest,
+    SubscribeRequest, UnsubscribeRequest,
 };
+use rust_decimal_macros::dec;
 
 #[test]
 fn test_channel_as_str_returns_correct_wire_names() {
@@ -387,5 +389,101 @@ fn test_cancel_after_error_response_deserializes() {
     assert_eq!(response.method, "cancel_all_orders_after");
     assert!(!response.success);
     assert_eq!(response.error, Some("EGeneral:Invalid arguments".to_string()));
+    assert!(response.result.is_none());
+}
+
+// Batch add tests
+
+#[test]
+fn test_batch_add_request_serializes() {
+    let request = BatchAddBuilder::new("BTC/USD")
+        .add_order(BatchOrderEntry::limit(OrderSide::Buy, dec!(0.1), dec!(50000)).with_order_userref(1))
+        .add_order(BatchOrderEntry::limit(OrderSide::Sell, dec!(0.2), dec!(55000)).with_order_userref(2))
+        .with_req_id(123456789)
+        .build("ws-token-123")
+        .expect("Failed to build batch_add request");
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize batch_add request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "batch_add");
+    assert_eq!(value["req_id"], 123456789);
+    assert_eq!(value["params"]["symbol"], "BTC/USD");
+    assert_eq!(value["params"]["token"], "ws-token-123");
+    assert_eq!(value["params"]["orders"].as_array().unwrap().len(), 2);
+    assert_eq!(value["params"]["orders"][0]["side"], "buy");
+    assert_eq!(value["params"]["orders"][0]["order_type"], "limit");
+    assert_eq!(value["params"]["orders"][1]["side"], "sell");
+}
+
+#[test]
+fn test_batch_add_with_validate_serializes() {
+    let request = BatchAddBuilder::new("ETH/USD")
+        .add_order(BatchOrderEntry::market(OrderSide::Buy, dec!(1)))
+        .add_order(BatchOrderEntry::market(OrderSide::Sell, dec!(1)))
+        .with_validate(true)
+        .build("token")
+        .expect("Failed to build batch_add request");
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize batch_add request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["params"]["validate"], true);
+}
+
+#[test]
+fn test_batch_add_success_response_deserializes() {
+    let json = r#"{
+        "method": "batch_add",
+        "req_id": 1234567890,
+        "result": [
+            {
+                "order_id": "ORDERX-IDXXX-XXXXX1",
+                "cl_ord_id": "my-order-1",
+                "order_userref": 1
+            },
+            {
+                "order_id": "ORDERX-IDXXX-XXXXX2",
+                "order_userref": 2
+            }
+        ],
+        "success": true,
+        "time_in": "2022-06-13T08:09:10.123456Z",
+        "time_out": "2022-06-13T08:09:10.789012Z"
+    }"#;
+
+    let response: BatchAddResponse =
+        serde_json::from_str(json).expect("Failed to deserialize batch_add response");
+
+    assert_eq!(response.method, "batch_add");
+    assert!(response.success);
+    assert_eq!(response.req_id, Some(1234567890));
+    assert!(response.result.is_some());
+
+    let results = response.result.unwrap();
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].order_id, "ORDERX-IDXXX-XXXXX1");
+    assert_eq!(results[0].cl_ord_id, Some("my-order-1".to_string()));
+    assert_eq!(results[1].order_id, "ORDERX-IDXXX-XXXXX2");
+}
+
+#[test]
+fn test_batch_add_error_response_deserializes() {
+    let json = r#"{
+        "method": "batch_add",
+        "success": false,
+        "error": "EOrder:Invalid order",
+        "time_in": "2022-06-13T08:09:10.123456Z",
+        "time_out": "2022-06-13T08:09:10.789012Z"
+    }"#;
+
+    let response: BatchAddResponse =
+        serde_json::from_str(json).expect("Failed to deserialize batch_add error response");
+
+    assert_eq!(response.method, "batch_add");
+    assert!(!response.success);
+    assert_eq!(response.error, Some("EOrder:Invalid order".to_string()));
     assert!(response.result.is_none());
 }
