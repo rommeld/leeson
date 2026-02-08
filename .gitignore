@@ -2,6 +2,7 @@
 
 # configurations
 /config
+/certs
 
 # Claude
 .claude
