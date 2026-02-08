@@ -23,8 +23,9 @@ use crate::models::{
     AddOrderRequest, AddOrderResponse, AmendOrderRequest, AmendOrderResponse, BatchAddRequest,
     BatchAddResponse, BatchCancelRequest, BatchCancelResponse, CancelAfterRequest,
     CancelAfterResponse, CancelAllRequest, CancelAllResponse, CancelOrderRequest,
-    CancelOrderResponse, Channel, ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest,
-    PingRequest, PongResponse, StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
+    CancelOrderResponse, Channel, EditOrderRequest, EditOrderResponse,
+    ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, PingRequest, PongResponse,
+    StatusUpdateResponse, SubscribeRequest, UnsubscribeRequest,
 };
 
 /// Write half of a Kraken WebSocket connection.
@@ -329,6 +330,29 @@ pub async fn amend_order(write: &mut WsWriter, request: AmendOrderRequest) -> Re
     Ok(())
 }
 
+/// Sends an edit_order request to modify a live order.
+///
+/// When successful, the original order is cancelled and a new order is created
+/// with the adjusted parameters and a new `order_id`. Note that this causes
+/// loss of queue position. The `amend_order` endpoint is the preferred alternative
+/// with fewer restrictions and better performance.
+///
+/// # Errors
+///
+/// Returns a [`LeesonError`](crate::LeesonError) if sending the request fails.
+pub async fn edit_order(write: &mut WsWriter, request: EditOrderRequest) -> Result<()> {
+    let json = serde_json::to_string(&request)?;
+    write.send(Message::Text(json.into())).await?;
+    info!(
+        method = "edit_order",
+        order_id = request.order_id(),
+        req_id = ?request.req_id(),
+        "Sent edit_order request"
+    );
+
+    Ok(())
+}
+
 /// Reads and dispatches incoming WebSocket messages indefinitely.
 ///
 /// Messages are parsed and logged via `tracing`. The function runs until
@@ -524,6 +548,29 @@ pub async fn process_messages(read: &mut WsReader) -> Result<()> {
                         error = ?response.error,
                         req_id = ?response.req_id,
                         "Order amendment failed"
+                    );
+                }
+                continue;
+            }
+
+            if msg_method == Some("edit_order") {
+                let response: EditOrderResponse = serde_json::from_value(value)?;
+                if response.success {
+                    if let Some(ref result) = response.result {
+                        info!(
+                            method = response.method,
+                            order_id = result.order_id,
+                            original_order_id = result.original_order_id,
+                            req_id = ?response.req_id,
+                            "Order edited successfully"
+                        );
+                    }
+                } else {
+                    warn!(
+                        method = response.method,
+                        error = ?response.error,
+                        req_id = ?response.req_id,
+                        "Order edit failed"
                     );
                 }
                 continue;

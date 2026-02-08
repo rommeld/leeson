@@ -3,8 +3,9 @@
 use leeson::models::{
     BatchAddBuilder, BatchAddResponse, BatchCancelBuilder, BatchCancelRequest, BatchCancelResponse,
     BatchOrderEntry, CancelAfterRequest, CancelAfterResponse, CancelAllRequest, CancelAllResponse,
-    CancelOrderBuilder, CancelOrderResponse, Channel, ExecutionsSubscribeRequest,
-    ExecutionsUnsubscribeRequest, OrderSide, PingRequest, SubscribeRequest, UnsubscribeRequest,
+    CancelOrderBuilder, CancelOrderResponse, Channel, EditOrderBuilder, EditOrderResponse,
+    ExecutionsSubscribeRequest, ExecutionsUnsubscribeRequest, OrderSide, PingRequest,
+    SubscribeRequest, UnsubscribeRequest,
 };
 use rust_decimal_macros::dec;
 
@@ -597,5 +598,99 @@ fn test_batch_cancel_error_response_deserializes() {
         response.error,
         Some("EGeneral:Permission denied".to_string())
     );
+    assert!(response.result.is_none());
+}
+
+// Edit order tests
+
+#[test]
+fn test_edit_order_request_serializes() {
+    let request = EditOrderBuilder::new("OFGKYQ-FHPCQ-HUQFEK", "BTC/USD")
+        .with_order_qty(dec!(0.5))
+        .with_limit_price(dec!(52000))
+        .with_req_id(123456789)
+        .build("ws-token-123")
+        .expect("Failed to build edit_order request");
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize edit_order request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["method"], "edit_order");
+    assert_eq!(value["req_id"], 123456789);
+    assert_eq!(value["params"]["order_id"], "OFGKYQ-FHPCQ-HUQFEK");
+    assert_eq!(value["params"]["symbol"], "BTC/USD");
+    assert_eq!(value["params"]["token"], "ws-token-123");
+    assert_eq!(value["params"]["order_qty"], "0.5");
+    assert_eq!(value["params"]["limit_price"], "52000");
+}
+
+#[test]
+fn test_edit_order_with_optional_fields_serializes() {
+    let request = EditOrderBuilder::new("ORDER123", "ETH/USD")
+        .with_order_qty(dec!(1.5))
+        .with_display_qty(dec!(0.5))
+        .with_post_only(true)
+        .with_reduce_only(false)
+        .with_order_userref(42)
+        .with_validate(true)
+        .build("token")
+        .expect("Failed to build edit_order request");
+
+    let json = serde_json::to_string(&request).expect("Failed to serialize edit_order request");
+    let value: serde_json::Value =
+        serde_json::from_str(&json).expect("Failed to parse serialized JSON");
+
+    assert_eq!(value["params"]["order_qty"], "1.5");
+    assert_eq!(value["params"]["display_qty"], "0.5");
+    assert_eq!(value["params"]["post_only"], true);
+    assert_eq!(value["params"]["reduce_only"], false);
+    assert_eq!(value["params"]["order_userref"], 42);
+    assert_eq!(value["params"]["validate"], true);
+}
+
+#[test]
+fn test_edit_order_success_response_deserializes() {
+    let json = r#"{
+        "method": "edit_order",
+        "success": true,
+        "result": {
+            "order_id": "ORDERX-IDXXX-XXXXX2",
+            "original_order_id": "ORDERX-IDXXX-XXXXX1"
+        },
+        "req_id": 1234567890,
+        "time_in": "2022-07-15T12:56:09.876488Z",
+        "time_out": "2022-07-15T12:56:09.923422Z"
+    }"#;
+
+    let response: EditOrderResponse =
+        serde_json::from_str(json).expect("Failed to deserialize edit_order response");
+
+    assert_eq!(response.method, "edit_order");
+    assert!(response.success);
+    assert_eq!(response.req_id, Some(1234567890));
+    assert!(response.result.is_some());
+
+    let result = response.result.unwrap();
+    assert_eq!(result.order_id, "ORDERX-IDXXX-XXXXX2");
+    assert_eq!(result.original_order_id, "ORDERX-IDXXX-XXXXX1");
+}
+
+#[test]
+fn test_edit_order_error_response_deserializes() {
+    let json = r#"{
+        "method": "edit_order",
+        "success": false,
+        "error": "EOrder:Unknown order",
+        "time_in": "2022-07-15T12:56:09.876488Z",
+        "time_out": "2022-07-15T12:56:09.923422Z"
+    }"#;
+
+    let response: EditOrderResponse =
+        serde_json::from_str(json).expect("Failed to deserialize edit_order error response");
+
+    assert_eq!(response.method, "edit_order");
+    assert!(!response.success);
+    assert_eq!(response.error, Some("EOrder:Unknown order".to_string()));
     assert!(response.result.is_none());
 }

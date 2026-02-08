@@ -12,6 +12,7 @@ pub mod cancel_after;
 pub mod cancel_all;
 pub mod cancel_order;
 pub mod candle;
+pub mod edit_order;
 pub mod execution;
 pub mod instrument;
 pub mod orders;
@@ -42,6 +43,10 @@ pub use cancel_all::{CancelAllRequest, CancelAllResponse, CancelAllResult};
 pub use cancel_order::{
     CancelOrderBuilder, CancelOrderError, CancelOrderParams, CancelOrderRequest,
     CancelOrderResponse, CancelOrderResult,
+};
+pub use edit_order::{
+    EditOrderBuilder, EditOrderError, EditOrderParams, EditOrderRequest, EditOrderResponse,
+    EditOrderResult,
 };
 
 use serde::{Deserialize, Serialize};
