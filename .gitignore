@@ -3,6 +3,7 @@
 # configurations
 /config
 /certs
+!/certs/gts_root_r4.pem
 
 # Claude
 .claude
