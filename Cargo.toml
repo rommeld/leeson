@@ -3,6 +3,7 @@ name = "leeson"
 version = "0.1.0"
 edition = "2024"
 description = "leveraged execution engine for speculative operations network"
+license-file = "LICENSE"
 
 [dependencies]
 config = "0.15"
