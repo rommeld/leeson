@@ -1,0 +1,177 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: "Version bump type"
+        required: true
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+
+      - name: Check for unreleased changes
+        id: check-unreleased
+        run: |
+          if [ ! -f CHANGELOG.md ]; then
+            echo "CHANGELOG.md not found"
+            exit 1
+          fi
+
+          # Extract content between [Unreleased] and next version (or EOF)
+          UNRELEASED_CONTENT=$(awk '/^## \[Unreleased\]/{flag=1; next} /^## \[[0-9]+\.[0-9]+\.[0-9]+\]/{flag=0} flag' CHANGELOG.md)
+
+          # Check if there's actual content (not just whitespace)
+          if [ -z "$(echo "$UNRELEASED_CONTENT" | grep -E "^### |^- ")" ]; then
+            echo "No unreleased changes found in CHANGELOG.md"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+
+          # Determine suggested bump type based on content
+          if echo "$UNRELEASED_CONTENT" | grep -q "^### Breaking"; then
+            echo "suggested_bump=major" >> $GITHUB_OUTPUT
+          elif echo "$UNRELEASED_CONTENT" | grep -q "^### Added"; then
+            echo "suggested_bump=minor" >> $GITHUB_OUTPUT
+          else
+            echo "suggested_bump=patch" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Abort if no changes
+        if: steps.check-unreleased.outputs.has_changes != 'true'
+        run: |
+          echo "::error::No unreleased changes found. Nothing to release."
+          exit 1
+
+      - name: Determine bump type
+        id: bump-type
+        run: |
+          INPUT_TYPE="${{ github.event.inputs.bump_type }}"
+          SUGGESTED="${{ steps.check-unreleased.outputs.suggested_bump }}"
+
+          if [ "$INPUT_TYPE" = "auto" ]; then
+            echo "type=$SUGGESTED" >> $GITHUB_OUTPUT
+            echo "Using auto-detected bump type: $SUGGESTED"
+          else
+            echo "type=$INPUT_TYPE" >> $GITHUB_OUTPUT
+            echo "Using manually specified bump type: $INPUT_TYPE"
+          fi
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Bump version
+        id: bump-version
+        run: |
+          # Get current version from Cargo.toml
+          CURRENT_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "Current version: $CURRENT_VERSION"
+
+          # Parse version components
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT_VERSION"
+
+          # Bump based on type
+          BUMP_TYPE="${{ steps.bump-type.outputs.type }}"
+          case "$BUMP_TYPE" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+
+          NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # Update Cargo.toml
+          sed -i "s/^version = \"$CURRENT_VERSION\"/version = \"$NEW_VERSION\"/" Cargo.toml
+
+          # Regenerate Cargo.lock with updated version
+          cargo generate-lockfile
+
+      - name: Update CHANGELOG.md for release
+        run: |
+          NEW_VERSION="${{ steps.bump-version.outputs.new_version }}"
+          TODAY=$(date +%Y-%m-%d)
+
+          # Replace [Unreleased] with version number and date, add new Unreleased section
+          sed -i "s/^## \[Unreleased\]/## [Unreleased]\n\n## [$NEW_VERSION] - $TODAY/" CHANGELOG.md
+
+      - name: Commit and tag release
+        run: |
+          NEW_VERSION="${{ steps.bump-version.outputs.new_version }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add Cargo.toml Cargo.lock CHANGELOG.md
+          git commit -m "chore: bump version to $NEW_VERSION [skip ci]"
+          git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
+
+          git push --follow-tags
+
+      - name: Generate release notes
+        id: release-notes
+        run: |
+          NEW_VERSION="${{ steps.bump-version.outputs.new_version }}"
+
+          # Extract release notes for this version from CHANGELOG
+          NOTES=$(awk -v ver="$NEW_VERSION" '
+            /^## \[/ {
+              if (found) exit
+              if (index($0, ver)) found=1
+              next
+            }
+            found {print}
+          ' CHANGELOG.md)
+
+          # Write to file for the release
+          echo "$NOTES" > /tmp/release_notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NEW_VERSION="${{ steps.bump-version.outputs.new_version }}"
+
+          gh release create "v$NEW_VERSION" \
+            --title "v$NEW_VERSION" \
+            --notes-file /tmp/release_notes.md
+
+      - name: Summary
+        run: |
+          NEW_VERSION="${{ steps.bump-version.outputs.new_version }}"
+          echo "## Release Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** v$NEW_VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Bump Type:** ${{ steps.bump-type.outputs.type }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The release has been tagged and published." >> $GITHUB_STEP_SUMMARY
