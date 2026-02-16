@@ -46,6 +46,7 @@ impl CancelOrderRequest {
 
 /// Successful order cancellation result.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct CancelOrderResult {
     pub order_id: String,
     #[serde(default)]
@@ -54,6 +55,7 @@ pub struct CancelOrderResult {
 
 /// Response to a cancel_order request.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct CancelOrderResponse {
     pub method: String,
     pub success: bool,

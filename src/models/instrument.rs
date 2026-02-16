@@ -15,6 +15,7 @@ pub struct InstrumentUpdateResponse {
 
 /// Container for asset and trading pair reference data.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct InstrumentData {
     pub assets: Vec<AssetInfo>,
     pub pairs: Vec<PairInfo>,
@@ -22,6 +23,7 @@ pub struct InstrumentData {
 
 /// Reference data for a single asset (currency).
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct AssetInfo {
     pub id: String,
     pub status: String,
@@ -37,6 +39,7 @@ pub struct AssetInfo {
 
 /// Reference data for a single trading pair.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct PairInfo {
     pub symbol: String,
     pub base: String,

@@ -15,6 +15,7 @@ pub struct TickerUpdateResponse {
 
 /// Real-time ticker snapshot for a single trading pair.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct TickerData {
     /// Trading pair symbol (e.g., `"BTC/USD"`).
     pub symbol: String,

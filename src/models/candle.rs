@@ -17,6 +17,7 @@ pub struct CandleUpdateResponse {
 
 /// A single OHLC candlestick bar.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct CandleData {
     pub symbol: String,
     /// Opening price of the candle.

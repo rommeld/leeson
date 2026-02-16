@@ -20,6 +20,7 @@ pub struct ExecutionUpdateResponse {
 
 /// A single execution report.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct ExecutionData {
     // -- Identifiers --
     pub order_id: String,
@@ -89,6 +90,7 @@ pub struct ExecutionData {
 
 /// Fee charged on a trade event.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct Fee {
     pub asset: String,
     pub qty: Decimal,
@@ -96,6 +98,7 @@ pub struct Fee {
 
 /// Trigger parameters for stop/trailing orders.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct Triggers {
     pub reference: Option<String>,
     pub price: Option<Decimal>,
@@ -109,6 +112,7 @@ pub struct Triggers {
 
 /// Contingent (secondary) order template.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct Contingent {
     pub order_type: Option<String>,
     pub trigger_price: Option<Decimal>,

@@ -15,6 +15,7 @@ pub struct OrdersUpdateResponse {
 
 /// Level-3 order book data for a single trading pair.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct OrdersData {
     pub symbol: String,
     /// Bid (buy) side individual orders.
@@ -28,6 +29,7 @@ pub struct OrdersData {
 
 /// A single order in the level-3 book.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct OrderEntry {
     /// Lifecycle event for this order: `"add"`, `"modify"`, or `"delete"`.
     /// `None` on the initial snapshot.

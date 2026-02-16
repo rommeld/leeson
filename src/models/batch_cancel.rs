@@ -76,6 +76,7 @@ impl BatchCancelRequest {
 
 /// Successful batch_cancel result.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct BatchCancelResult {
     /// Number of orders cancelled.
     pub count: u64,
@@ -83,6 +84,7 @@ pub struct BatchCancelResult {
 
 /// Response to a batch_cancel request.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct BatchCancelResponse {
     pub method: String,
     pub success: bool,

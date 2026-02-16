@@ -281,6 +281,7 @@ impl BatchAddRequest {
 
 /// Result for a single order in the batch response.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct BatchAddOrderResult {
     pub order_id: String,
     #[serde(default)]
@@ -291,6 +292,7 @@ pub struct BatchAddOrderResult {
 
 /// Response to a batch_add request.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct BatchAddResponse {
     pub method: String,
     pub success: bool,

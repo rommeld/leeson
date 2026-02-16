@@ -100,6 +100,10 @@ impl fmt::Display for RedactedToken {
 
 /// Available Kraken WebSocket V2 channels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(frozen, eq, eq_int, hash, from_py_object)
+)]
 pub enum Channel {
     /// Account balances (authenticated).
     Balances,

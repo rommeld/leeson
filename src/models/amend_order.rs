@@ -8,8 +8,12 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 /// Price type for limit and trigger price fields.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(frozen, eq, eq_int, hash, from_py_object)
+)]
 pub enum PriceType {
     /// Absolute price value (default).
     Static,
@@ -76,6 +80,7 @@ impl AmendOrderRequest {
 
 /// Successful order amendment result.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct AmendOrderResult {
     pub amend_id: String,
     #[serde(default)]
@@ -86,6 +91,7 @@ pub struct AmendOrderResult {
 
 /// Response to an amend_order request.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct AmendOrderResponse {
     pub method: String,
     pub success: bool,

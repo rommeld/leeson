@@ -86,6 +86,7 @@ impl CancelAfterRequest {
 
 /// Successful cancel_after result.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct CancelAfterResult {
     /// Current engine time.
     #[serde(rename = "currentTime")]
@@ -97,6 +98,7 @@ pub struct CancelAfterResult {
 
 /// Response to a cancel_all_orders_after request.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct CancelAfterResponse {
     pub method: String,
     pub success: bool,

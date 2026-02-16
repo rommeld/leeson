@@ -15,6 +15,7 @@ pub struct BookUpdateResponse {
 
 /// Order book snapshot or incremental update for a single trading pair.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct BookData {
     pub symbol: String,
     /// Bid (buy) side price levels, sorted highest to lowest.
@@ -28,6 +29,7 @@ pub struct BookData {
 
 /// A single price level in the order book.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct PriceLevel {
     pub price: Decimal,
     pub qty: Decimal,
@@ -35,6 +37,10 @@ pub struct PriceLevel {
 
 /// Available depth levels for order book subscriptions.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(frozen, eq, eq_int, hash, from_py_object)
+)]
 pub enum BookDepth {
     /// Top 10 price levels (default).
     #[default]

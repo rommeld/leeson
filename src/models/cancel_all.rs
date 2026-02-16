@@ -42,6 +42,7 @@ impl CancelAllRequest {
 
 /// Successful cancel_all result.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct CancelAllResult {
     /// Number of orders cancelled.
     pub count: u64,
@@ -52,6 +53,7 @@ pub struct CancelAllResult {
 
 /// Response to a cancel_all request.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct CancelAllResponse {
     pub method: String,
     pub success: bool,

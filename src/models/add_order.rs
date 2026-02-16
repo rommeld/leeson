@@ -8,8 +8,12 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
 /// Order type specifying how the order should be executed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(frozen, eq, eq_int, hash, from_py_object)
+)]
 pub enum OrderType {
     Limit,
     Market,
@@ -24,16 +28,24 @@ pub enum OrderType {
 }
 
 /// Order side (buy or sell).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(frozen, eq, eq_int, hash, from_py_object)
+)]
 pub enum OrderSide {
     Buy,
     Sell,
 }
 
 /// Time in force specifying how long the order remains active.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(frozen, eq, eq_int, hash, from_py_object)
+)]
 pub enum TimeInForce {
     /// Good 'til cancelled (default).
     Gtc,
@@ -44,8 +56,12 @@ pub enum TimeInForce {
 }
 
 /// Price reference for trigger orders.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(frozen, eq, eq_int, hash, from_py_object)
+)]
 pub enum TriggerReference {
     /// Last traded price.
     Last,
@@ -54,8 +70,12 @@ pub enum TriggerReference {
 }
 
 /// Trigger price type (percentage or static).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(frozen, eq, eq_int, hash, from_py_object)
+)]
 pub enum TriggerPriceType {
     /// Percentage offset from reference.
     Pct,
@@ -64,8 +84,12 @@ pub enum TriggerPriceType {
 }
 
 /// Self-trade prevention type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(frozen, eq, eq_int, hash, from_py_object)
+)]
 pub enum StpType {
     CancelNewest,
     CancelOldest,
@@ -74,6 +98,7 @@ pub enum StpType {
 
 /// Trigger parameters for stop-loss, take-profit, and trailing orders.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct TriggerParams {
     pub reference: TriggerReference,
     pub price: Decimal,
@@ -103,8 +128,27 @@ impl TriggerParams {
     }
 }
 
+#[cfg(feature = "python")]
+#[pyo3::pymethods]
+impl TriggerParams {
+    #[new]
+    #[pyo3(signature = (reference, price, *, price_type=None))]
+    fn py_new(
+        reference: TriggerReference,
+        price: Decimal,
+        price_type: Option<TriggerPriceType>,
+    ) -> Self {
+        Self {
+            reference,
+            price,
+            price_type,
+        }
+    }
+}
+
 /// Conditional (secondary) order attached to the primary order.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct ConditionalOrder {
     pub order_type: OrderType,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -113,9 +157,31 @@ pub struct ConditionalOrder {
     pub trigger_price: Option<Decimal>,
 }
 
+#[cfg(feature = "python")]
+#[pyo3::pymethods]
+impl ConditionalOrder {
+    #[new]
+    #[pyo3(signature = (order_type, *, limit_price=None, trigger_price=None))]
+    fn py_new(
+        order_type: OrderType,
+        limit_price: Option<Decimal>,
+        trigger_price: Option<Decimal>,
+    ) -> Self {
+        Self {
+            order_type,
+            limit_price,
+            trigger_price,
+        }
+    }
+}
+
 /// Fee preference for order execution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(frozen, eq, eq_int, hash, from_py_object)
+)]
 pub enum FeeCurrencyPreference {
     Base,
     Quote,
@@ -190,6 +256,7 @@ impl AddOrderRequest {
 
 /// Successful order placement result.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct AddOrderResult {
     pub order_id: String,
     #[serde(default)]
@@ -200,6 +267,7 @@ pub struct AddOrderResult {
 
 /// Response to an add_order request.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct AddOrderResponse {
     pub method: String,
     pub success: bool,

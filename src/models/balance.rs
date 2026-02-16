@@ -17,6 +17,7 @@ pub struct BalanceResponse {
 
 /// Balance data for a single asset (used in snapshots).
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct BalanceData {
     /// Asset symbol (e.g., "BTC", "USD").
     pub asset: String,
@@ -32,6 +33,7 @@ pub struct BalanceData {
 
 /// Balance for a specific wallet.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct WalletBalance {
     /// Wallet type: "spot" or "earn".
     #[serde(rename = "type")]
@@ -45,6 +47,7 @@ pub struct WalletBalance {
 
 /// Balance update data (used in updates after transactions).
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct BalanceUpdateData {
     /// Ledger entry identifier.
     pub ledger_id: String,

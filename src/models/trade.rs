@@ -15,6 +15,7 @@ pub struct TradeUpdateResponse {
 
 /// A single executed trade.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct TradeData {
     pub symbol: String,
     /// Trade direction: `"buy"` or `"sell"`.

@@ -87,6 +87,7 @@ impl EditOrderRequest {
 
 /// Successful edit_order result.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct EditOrderResult {
     /// New order ID (the edited order).
     pub order_id: String,
@@ -96,6 +97,7 @@ pub struct EditOrderResult {
 
 /// Response to an edit_order request.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct EditOrderResponse {
     pub method: String,
     pub success: bool,
