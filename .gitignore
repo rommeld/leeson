@@ -5,8 +5,7 @@
 /certs
 !/certs/gts_root_r4.pem
 
-# Claude
-.claude
+
 
 # logs
 leeson.log
