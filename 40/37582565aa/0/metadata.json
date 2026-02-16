@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "4037582565aa",
+  "session_id": "09fb7540-cb6e-40fd-ae6d-50f1241c43c4",
+  "strategy": "manual-commit",
+  "created_at": "2026-02-16T21:46:12.50273Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "ac4a7372-7f62-45b2-ad6d-fd9d0d60aa43",
+  "token_usage": {
+    "input_tokens": 38,
+    "cache_creation_tokens": 34183,
+    "cache_read_tokens": 987033,
+    "output_tokens": 3541,
+    "api_call_count": 26
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-02-16T21:46:12.433922Z",
+    "agent_lines": 0,
+    "human_added": 757,
+    "human_modified": 1,
+    "human_removed": 0,
+    "total_committed": 757,
+    "agent_percentage": 0
+  },
+  "transcript_path": ".claude/projects/-Users-denny-Documents-repos-leeson/09fb7540-cb6e-40fd-ae6d-50f1241c43c4.jsonl"
+}

@@ -1,0 +1,25 @@
+I currently need to enter my password when I want to sign my commits. How do I change the config so I do not need to enter my password anymore?
+
+---
+
+yes
+
+---
+
+[Request interrupted by user for tool use]
+
+---
+
+Is there another way just using git?
+
+---
+
+I do not want to sign my commits anymore. Too much overhead.
+
+---
+
+check out the chances in my project. write commits. follow common git pattern. divide the commits by domaine.
+
+---
+
+update the README.md. describe the current project structure and functionality. avoid verbosity.
