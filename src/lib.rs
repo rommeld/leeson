@@ -8,6 +8,8 @@ pub mod auth;
 pub mod config;
 pub mod error;
 pub mod models;
+#[cfg(feature = "python")]
+mod python;
 pub mod tls;
 pub mod tui;
 pub mod websocket;
