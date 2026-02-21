@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "1e0969e296a3",
+  "session_id": "d3716988-e97a-4b46-85a9-82f65b9a1fc3",
+  "strategy": "auto-commit",
+  "created_at": "2026-02-21T15:33:09.60186Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/tui/app.rs",
+    "src/tui/components/status_bar.rs",
+    "src/tui/event.rs",
+    "src/websocket/connection.rs"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "0e5e5096-1bc0-464b-939d-5fcb2cb3d8d3",
+  "checkpoint_transcript_start": 68,
+  "transcript_lines_at_start": 68,
+  "token_usage": {
+    "input_tokens": 18,
+    "cache_creation_tokens": 30563,
+    "cache_read_tokens": 1182519,
+    "output_tokens": 5221,
+    "api_call_count": 16,
+    "subagent_tokens": {
+      "input_tokens": 6327,
+      "cache_creation_tokens": 60381,
+      "cache_read_tokens": 487646,
+      "output_tokens": 24,
+      "api_call_count": 13
+    }
+  }
+}

@@ -1,0 +1,1 @@
+If the authenticated WebSocket connection fails but credentials are configured, the app silently falls back to public-only mode. The operator has no indication that authenticated channels are unavailable. Implement indication for authenticated connection.
