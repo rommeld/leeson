@@ -21,6 +21,9 @@ const MAX_AGENT_OUTPUT_LINES: usize = 50;
 /// Maximum number of order book snapshots to retain in history.
 pub const MAX_ORDERBOOK_HISTORY: usize = 20;
 
+/// Maximum number of order book levels retained per side (bids/asks).
+pub const MAX_BOOK_DEPTH: usize = 1000;
+
 /// Central application state container.
 pub struct App {
     // -- Tab State --

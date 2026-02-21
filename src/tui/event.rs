@@ -17,7 +17,9 @@ use crate::models::{
     StatusUpdateResponse,
 };
 
-use super::app::{App, AssetBalance, Focus, MAX_ORDERBOOK_HISTORY, Mode, OrderBookSnapshot, Tab};
+use super::app::{
+    App, AssetBalance, Focus, MAX_BOOK_DEPTH, MAX_ORDERBOOK_HISTORY, Mode, OrderBookSnapshot, Tab,
+};
 
 /// Maximum length (in bytes) for agent input text.
 ///
@@ -25,6 +27,9 @@ use super::app::{App, AssetBalance, Focus, MAX_ORDERBOOK_HISTORY, Mode, OrderBoo
 /// oversized payloads being serialized to agent stdin. 4 KiB is generous
 /// for a single operator command.
 const MAX_INPUT_LENGTH: usize = 4096;
+
+/// Maximum open orders tracked per symbol before oldest are dropped.
+const MAX_OPEN_ORDERS_PER_SYMBOL: usize = 200;
 
 /// Events that can occur in the application.
 #[derive(Debug)]
@@ -198,9 +203,12 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                         {
                             existing.qty = level.qty;
                         } else {
-                            state.bids.push(level);
-                            // Keep bids sorted highest to lowest
-                            state.bids.sort_by(|a, b| b.price.cmp(&a.price));
+                            // Binary search for insertion point (bids sorted descending)
+                            let pos = state
+                                .bids
+                                .binary_search_by(|probe| level.price.cmp(&probe.price))
+                                .unwrap_or_else(|pos| pos);
+                            state.bids.insert(pos, level);
                         }
                     }
                     for level in data.asks {
@@ -211,9 +219,12 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                         {
                             existing.qty = level.qty;
                         } else {
-                            state.asks.push(level);
-                            // Keep asks sorted lowest to highest
-                            state.asks.sort_by(|a, b| a.price.cmp(&b.price));
+                            // Binary search for insertion point (asks sorted ascending)
+                            let pos = state
+                                .asks
+                                .binary_search_by(|probe| probe.price.cmp(&level.price))
+                                .unwrap_or_else(|pos| pos);
+                            state.asks.insert(pos, level);
                         }
                     }
 
@@ -246,6 +257,10 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                         state.checksum_failures = 0;
                     }
                 }
+
+                // Enforce depth limit
+                state.bids.truncate(MAX_BOOK_DEPTH);
+                state.asks.truncate(MAX_BOOK_DEPTH);
 
                 state.checksum = expected_checksum;
                 state.last_update = Some(Instant::now());
@@ -297,6 +312,9 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                         if let Some(pos) = orders.iter().position(|o| o.order_id == data.order_id) {
                             orders[pos] = data;
                         } else {
+                            if orders.len() >= MAX_OPEN_ORDERS_PER_SYMBOL {
+                                orders.remove(0);
+                            }
                             orders.push(data);
                         }
                     }
