@@ -1,0 +1,17 @@
+Here's a summary of what was implemented across 4 files:
+
+**`src/tui/app.rs`** — Added three fields to `OrderBookState`:
+- `is_stale: bool` — marks the book as having a checksum mismatch
+- `checksum_failures: u8` — tracks consecutive failures for retry limiting
+- `last_resync_request: Option<Instant>` — cooldown timer between resync attempts
+
+**`src/tui/event.rs`** — Core verification logic:
+- Added `Action::ResyncBook(String)` variant
+- After every **incremental** update, calls `calculate_checksum()` and compares to the exchange's checksum
+- On **mismatch**: sets `is_stale`, increments failure count, logs a warning, and returns `ResyncBook` if within retry limit (3) and cooldown (5s)
+- On **match**: resets `is_stale` and failure count
+- On **snapshot**: resets all staleness state (fresh data from exchange)
+
+**`src/main.rs`** — Handles `ResyncBook` by unsubscribing then re-subscribing to the book channel, which triggers Kraken to send a fresh snapshot.
+
+**`src/tui/tabs/trading_pair.rs`** — Shows a yellow `[STALE]` indicator on the order book border when checksum verification fails.

@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "43f22d5280d9",
+  "session_id": "70adf678-1485-4aba-b63e-5c21ac203943",
+  "strategy": "auto-commit",
+  "created_at": "2026-02-21T12:26:35.769837Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/main.rs",
+    "src/tui/app.rs",
+    "src/tui/event.rs",
+    "src/tui/tabs/trading_pair.rs"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 27,
+    "cache_creation_tokens": 46772,
+    "cache_read_tokens": 1347996,
+    "output_tokens": 3513,
+    "api_call_count": 25
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "43f22d5280d9",
+  "strategy": "auto-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/main.rs",
+    "src/tui/app.rs",
+    "src/tui/event.rs",
+    "src/tui/tabs/trading_pair.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/43/f22d5280d9/0/metadata.json",
+      "transcript": "/43/f22d5280d9/0/full.jsonl",
+      "context": "",
+      "content_hash": "/43/f22d5280d9/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 27,
+    "cache_creation_tokens": 46772,
+    "cache_read_tokens": 1347996,
+    "output_tokens": 3513,
+    "api_call_count": 25
+  }
+}
