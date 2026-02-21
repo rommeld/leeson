@@ -10,9 +10,9 @@ pub type Result<T> = std::result::Result<T, LeesonError>;
 /// Top-level error type returned by all public APIs.
 #[derive(Debug, thiserror::Error)]
 pub enum LeesonError {
-    /// A configuration file could not be found, read, or deserialized.
+    /// A required environment variable is missing or empty.
     #[error("configuration error: {0}")]
-    Config(#[from] config::ConfigError),
+    Config(String),
 
     /// A WebSocket operation (connect, send, receive) failed.
     #[error("websocket error: {0}")]

@@ -1,4 +1,0 @@
-[kraken]
-websocket_url = "wss://ws.kraken.com/v2"
-api_key = ""
-api_secret = ""
