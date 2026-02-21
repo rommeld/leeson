@@ -1,0 +1,12 @@
+All clean. Here's a summary of the changes:
+
+**`src/main.rs`** — Replaced both `unbounded_channel` calls with `channel`:
+- Message channel: capacity **512** (absorbs WebSocket data bursts)
+- ConnectionCommand channel: capacity **32** (infrequent subscribe/unsubscribe/token-used)
+- All `cmd_tx.send()` → `cmd_tx.try_send()` with `warn!` on full
+
+**`src/websocket/connection.rs`** — Changed `tx` from `UnboundedSender` to `Sender`, `cmd_rx` from `UnboundedReceiver` to `Receiver`. Added `try_send()` helper method that warns on `Full` and logs on `Closed`. In `read_loop()`, `Full` drops the message with a warning while `Closed` returns `Shutdown`.
+
+**`src/tui/event.rs`** — Changed both spawner signatures to `Sender<Message>`. Key/resize events warn on drop; tick events drop silently (periodic, harmless to lose).
+
+**`src/agent.rs`** — Changed `spawn_agent` and internal reader/writer signatures to `Sender<Message>`. All sends use `try_send()`.

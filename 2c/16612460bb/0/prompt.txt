@@ -1,0 +1,1 @@
+Use bounded_channel(capacity) with a documented capacity. Drop or log stale messages when the buffer is full. check @src/main.rs
