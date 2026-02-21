@@ -44,8 +44,8 @@ async fn main() -> Result<(), LeesonError> {
 
     // Validate API credentials if provided
     let (credentials_valid, auth_error) = if has_credentials {
-        let key = app_config.kraken.api_key.as_ref().unwrap();
-        let secret = app_config.kraken.api_secret.as_ref().unwrap();
+        let key = app_config.kraken.api_key.as_deref().unwrap();
+        let secret = app_config.kraken.api_secret.as_deref().unwrap();
         match validate_credentials(key, secret, (*tls_config).clone()).await {
             Ok(_) => (true, None),
             Err(e) => (false, Some(e.to_string())),
@@ -86,12 +86,13 @@ async fn main() -> Result<(), LeesonError> {
     let writer: Arc<tokio::sync::Mutex<Option<leeson::websocket::WsWriter>>> =
         Arc::new(tokio::sync::Mutex::new(None));
 
-    // Spawn the connection manager
+    // Spawn the connection manager — credentials move into the manager,
+    // which is the sole owner for the rest of the process lifetime.
     let manager = ConnectionManager::new(
         url,
         tls_config,
-        app_config.kraken.api_key.clone(),
-        app_config.kraken.api_secret.clone(),
+        app_config.kraken.api_key,
+        app_config.kraken.api_secret,
         tx.clone(),
         writer.clone(),
         cmd_rx,

@@ -12,6 +12,7 @@ use base64::prelude::*;
 use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256, Sha512};
 use tracing::info;
+use zeroize::Zeroizing;
 
 /// Tracks the last nonce issued so every call returns a strictly
 /// increasing value even when the wall-clock hasn't advanced.
@@ -38,7 +39,7 @@ pub async fn validate_credentials(
     api_key: &str,
     api_secret: &str,
     tls_config: rustls::ClientConfig,
-) -> Result<String> {
+) -> Result<Zeroizing<String>> {
     get_websocket_token(api_key, api_secret, tls_config).await
 }
 
@@ -52,7 +53,7 @@ pub async fn get_websocket_token(
     api_key: &str,
     api_secret: &str,
     tls_config: rustls::ClientConfig,
-) -> Result<String> {
+) -> Result<Zeroizing<String>> {
     let nonce = next_nonce();
     let post_data = format!("nonce={nonce}");
     let signature = sign(api_secret, URL_PATH, nonce, &post_data)?;
@@ -97,7 +98,7 @@ pub async fn get_websocket_token(
         .to_string();
 
     info!("Obtained WebSocket authentication token");
-    Ok(token)
+    Ok(Zeroizing::new(token))
 }
 
 /// Returns a strictly monotonically-increasing nonce with nanosecond resolution.

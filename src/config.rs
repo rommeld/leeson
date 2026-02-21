@@ -6,6 +6,10 @@
 //!
 //! An optional `KRAKEN_WEBSOCKET_URL` overrides the default public endpoint.
 
+use std::fmt;
+
+use zeroize::Zeroizing;
+
 /// Default public WebSocket endpoint.
 const DEFAULT_WEBSOCKET_URL: &str = "wss://ws.kraken.com/v2";
 
@@ -16,11 +20,26 @@ pub struct AppConfig {
 }
 
 /// Kraken-specific configuration values.
-#[derive(Debug)]
+///
+/// Credentials are wrapped in [`Zeroizing`] so the backing memory is
+/// overwritten with zeros when the value is dropped.
 pub struct KrakenConfig {
     pub websocket_url: String,
-    pub api_key: Option<String>,
-    pub api_secret: Option<String>,
+    pub api_key: Option<Zeroizing<String>>,
+    pub api_secret: Option<Zeroizing<String>>,
+}
+
+impl fmt::Debug for KrakenConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("KrakenConfig")
+            .field("websocket_url", &self.websocket_url)
+            .field("api_key", &self.api_key.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "api_secret",
+                &self.api_secret.as_ref().map(|_| "[REDACTED]"),
+            )
+            .finish()
+    }
 }
 
 /// Loads the application configuration from environment variables.
@@ -57,8 +76,8 @@ pub fn fetch_config() -> crate::Result<AppConfig> {
     Ok(AppConfig {
         kraken: KrakenConfig {
             websocket_url,
-            api_key,
-            api_secret,
+            api_key: api_key.map(Zeroizing::new),
+            api_secret: api_secret.map(Zeroizing::new),
         },
     })
 }
@@ -140,8 +159,14 @@ mod tests {
             ],
             || {
                 let config = fetch_config().unwrap();
-                assert_eq!(config.kraken.api_key.as_deref(), Some("test-key"));
-                assert_eq!(config.kraken.api_secret.as_deref(), Some("test-secret"));
+                assert_eq!(
+                    config.kraken.api_key.as_deref().map(String::as_str),
+                    Some("test-key")
+                );
+                assert_eq!(
+                    config.kraken.api_secret.as_deref().map(String::as_str),
+                    Some("test-secret")
+                );
             },
         );
     }

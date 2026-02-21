@@ -85,22 +85,20 @@ pub struct ConnectionManager {
 
 impl ConnectionManager {
     /// Creates a new connection manager.
-    ///
-    /// Credentials are wrapped with [`Zeroizing`] to ensure secure erasure on drop.
     #[must_use]
     pub fn new(
         _url: String, // Ignored - we use fixed endpoints
         tls_config: Arc<rustls::ClientConfig>,
-        api_key: Option<String>,
-        api_secret: Option<String>,
+        api_key: Option<Zeroizing<String>>,
+        api_secret: Option<Zeroizing<String>>,
         tx: mpsc::Sender<Message>,
         writer: Arc<tokio::sync::Mutex<Option<WsWriter>>>,
         cmd_rx: mpsc::Receiver<ConnectionCommand>,
     ) -> Self {
         Self {
             tls_config,
-            api_key: api_key.map(Zeroizing::new),
-            api_secret: api_secret.map(Zeroizing::new),
+            api_key,
+            api_secret,
             tx,
             writer,
             cmd_rx,
@@ -131,13 +129,13 @@ impl ConnectionManager {
     }
 
     /// Fetches a fresh auth token, or `None` if no credentials.
-    async fn fetch_token(&self) -> Option<String> {
+    async fn fetch_token(&self) -> Option<Zeroizing<String>> {
         if !self.has_credentials() {
             return None;
         }
 
-        let key = self.api_key.as_ref().unwrap().as_str();
-        let secret = self.api_secret.as_ref().unwrap().as_str();
+        let key = self.api_key.as_ref().unwrap();
+        let secret = self.api_secret.as_ref().unwrap();
         let tls = (*self.tls_config).clone();
 
         match get_websocket_token(key, secret, tls).await {
@@ -263,7 +261,7 @@ impl ConnectionManager {
                 .read_loop(
                     public_read,
                     private_connection,
-                    token.as_deref(),
+                    token.is_some(),
                     token_fetched_at,
                 )
                 .await;
@@ -304,21 +302,21 @@ impl ConnectionManager {
         &mut self,
         mut public_read: WsReader,
         private_connection: Option<(WsWriter, WsReader)>,
-        token: Option<&str>,
+        has_token: bool,
         token_fetched_at: Instant,
     ) -> DisconnectReason {
         // Split private connection if available
         let mut private_read = private_connection.map(|(_, read)| read);
 
         // Build the token refresh deadline and warning deadline
-        let refresh_deadline = if token.is_some() {
+        let refresh_deadline = if has_token {
             Some(tokio::time::Instant::from_std(
                 token_fetched_at + TOKEN_REFRESH_INTERVAL,
             ))
         } else {
             None
         };
-        let warning_deadline = if token.is_some() {
+        let warning_deadline = if has_token {
             Some(tokio::time::Instant::from_std(
                 token_fetched_at + TOKEN_WARNING_THRESHOLD,
             ))
