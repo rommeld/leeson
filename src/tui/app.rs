@@ -428,6 +428,12 @@ pub struct OrderBookState {
     pub last_update: Option<Instant>,
     /// Historical snapshots of best bid/ask.
     pub history: VecDeque<OrderBookSnapshot>,
+    /// Whether the book has a known checksum mismatch.
+    pub is_stale: bool,
+    /// Consecutive checksum failures since last good state.
+    pub checksum_failures: u8,
+    /// When the last re-snapshot was requested (for cooldown).
+    pub last_resync_request: Option<Instant>,
 }
 
 /// A historical snapshot of order book state.

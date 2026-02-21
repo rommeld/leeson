@@ -1,12 +1,12 @@
 //! Event handling for the TUI.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc;
 
 use crate::models::balance::BalanceResponse;
-use crate::models::book::BookUpdateResponse;
+use crate::models::book::{BookUpdateResponse, calculate_checksum};
 use crate::models::candle::CandleUpdateResponse;
 use crate::models::execution::ExecutionUpdateResponse;
 use crate::models::ticker::TickerUpdateResponse;
@@ -140,15 +140,24 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
             None
         }
         Message::Book(response) => {
+            const MAX_CHECKSUM_FAILURES: u8 = 3;
+            const RESYNC_COOLDOWN: Duration = Duration::from_secs(5);
+
             let is_snapshot = response.tpe == "snapshot";
+            let mut resync_action: Option<Action> = None;
 
             for data in response.data {
-                let state = app.orderbooks.entry(data.symbol.clone()).or_default();
+                let symbol = data.symbol.clone();
+                let expected_checksum = data.checksum;
+                let state = app.orderbooks.entry(symbol.clone()).or_default();
 
                 if is_snapshot {
-                    // Snapshot: replace entire book
+                    // Snapshot: replace entire book and reset staleness
                     state.bids = data.bids;
                     state.asks = data.asks;
+                    state.is_stale = false;
+                    state.checksum_failures = 0;
+                    state.last_resync_request = None;
                 } else {
                     // Update: apply incremental changes
                     // A level with qty=0 means remove that price level
@@ -178,10 +187,39 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                             state.asks.sort_by(|a, b| a.price.cmp(&b.price));
                         }
                     }
+
+                    // Verify checksum after applying incremental update
+                    let local_checksum = calculate_checksum(&state.asks, &state.bids);
+                    if local_checksum != expected_checksum {
+                        state.is_stale = true;
+                        state.checksum_failures = state.checksum_failures.saturating_add(1);
+                        tracing::warn!(
+                            symbol = %symbol,
+                            expected = expected_checksum,
+                            calculated = local_checksum,
+                            failures = state.checksum_failures,
+                            "order book checksum mismatch"
+                        );
+
+                        let cooldown_elapsed = state
+                            .last_resync_request
+                            .is_none_or(|t| t.elapsed() >= RESYNC_COOLDOWN);
+
+                        if state.checksum_failures <= MAX_CHECKSUM_FAILURES
+                            && cooldown_elapsed
+                            && resync_action.is_none()
+                        {
+                            state.last_resync_request = Some(Instant::now());
+                            resync_action = Some(Action::ResyncBook(symbol.clone()));
+                        }
+                    } else {
+                        state.is_stale = false;
+                        state.checksum_failures = 0;
+                    }
                 }
 
-                state.checksum = data.checksum;
-                state.last_update = Some(std::time::Instant::now());
+                state.checksum = expected_checksum;
+                state.last_update = Some(Instant::now());
 
                 // Capture snapshot for history after updating state
                 if let (Some(best_bid), Some(best_ask)) = (state.bids.first(), state.asks.first()) {
@@ -197,7 +235,7 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                     state.history.push_back(snapshot);
                 }
             }
-            None
+            resync_action
         }
         Message::Trade(response) => {
             for data in response.data {
@@ -359,6 +397,8 @@ pub enum Action {
     SubscribePair(String),
     /// Unsubscribe from a trading pair.
     UnsubscribePair(String),
+    /// Re-subscribe to a pair's book channel after checksum mismatch.
+    ResyncBook(String),
     /// Place a new order.
     PlaceOrder,
     /// Cancel an order.
