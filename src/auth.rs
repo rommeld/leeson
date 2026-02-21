@@ -5,7 +5,7 @@
 //! [`GetWebSocketsToken`](https://docs.kraken.com/api/docs/rest-api/get-websockets-token)
 //! REST endpoint.  The token is valid for 15 minutes after creation.
 
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::prelude::*;
@@ -15,7 +15,9 @@ use tracing::info;
 
 /// Tracks the last nonce issued so every call returns a strictly
 /// increasing value even when the wall-clock hasn't advanced.
-static LAST_NONCE: Mutex<u128> = Mutex::new(0);
+///
+/// Uses nanosecond resolution in a `u64`, which overflows around year 2554.
+static LAST_NONCE: AtomicU64 = AtomicU64::new(0);
 
 use crate::Result;
 
@@ -52,7 +54,6 @@ pub async fn get_websocket_token(
     tls_config: rustls::ClientConfig,
 ) -> Result<String> {
     let nonce = next_nonce();
-
     let post_data = format!("nonce={nonce}");
     let signature = sign(api_secret, URL_PATH, nonce, &post_data)?;
 
@@ -104,22 +105,26 @@ pub async fn get_websocket_token(
 /// Uses the wall-clock as the baseline but guarantees that successive calls
 /// always return a value larger than the previous one, even when the clock
 /// resolution is too coarse or the clock jumps backwards.
-fn next_nonce() -> u128 {
+fn next_nonce() -> u64 {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("system clock before UNIX epoch")
-        .as_nanos();
+        .as_nanos() as u64;
 
-    let mut prev = LAST_NONCE.lock().expect("nonce mutex poisoned");
-    let nonce = now.max(*prev + 1);
-    *prev = nonce;
-    nonce
+    let mut prev = LAST_NONCE.load(Ordering::Relaxed);
+    loop {
+        let nonce = now.max(prev + 1);
+        match LAST_NONCE.compare_exchange_weak(prev, nonce, Ordering::Relaxed, Ordering::Relaxed) {
+            Ok(_) => return nonce,
+            Err(actual) => prev = actual,
+        }
+    }
 }
 
 /// Computes the `API-Sign` header value.
 ///
 /// Algorithm: `Base64(HMAC-SHA512(Base64Decode(secret), path + SHA256(nonce + post_data)))`
-fn sign(api_secret: &str, path: &str, nonce: u128, post_data: &str) -> Result<String> {
+fn sign(api_secret: &str, path: &str, nonce: u64, post_data: &str) -> Result<String> {
     let secret = BASE64_STANDARD.decode(api_secret).map_err(|e| {
         crate::LeesonError::MalformedMessage(format!("invalid base64 api_secret: {e}"))
     })?;
@@ -147,7 +152,7 @@ mod tests {
     fn sign_produces_deterministic_output() {
         // Use a known base64-encoded secret (32 bytes of zeros).
         let secret = BASE64_STANDARD.encode([0u8; 32]);
-        let nonce = 1_000_000_000_000u128;
+        let nonce = 1_000_000_000_000u64;
         let post_data = "nonce=1000000000000";
 
         let sig1 = sign(&secret, URL_PATH, nonce, post_data).unwrap();
