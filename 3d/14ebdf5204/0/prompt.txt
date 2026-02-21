@@ -1,0 +1,1 @@
+Replace with AtomicU128 or pass nonce state explicitly through the call stack.
