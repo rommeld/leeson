@@ -7,5 +7,8 @@
 
 
 
+# Claude Code worktrees
+.claude/worktrees/
+
 # logs
 leeson.log
