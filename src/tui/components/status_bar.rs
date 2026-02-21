@@ -18,10 +18,12 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         ConnectionStatus::Disconnected => Color::Red,
     };
 
-    let auth_label = if app.authenticated {
+    let auth_label = if !app.authenticated {
+        Span::styled(" No Auth ", Style::default().fg(Color::DarkGray))
+    } else if app.private_connected {
         Span::styled(" Auth ", Style::default().fg(Color::Green))
     } else {
-        Span::styled(" No Auth ", Style::default().fg(Color::DarkGray))
+        Span::styled(" Auth Down ", Style::default().fg(Color::Yellow))
     };
 
     // Show USD balance if available

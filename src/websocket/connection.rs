@@ -192,6 +192,9 @@ impl ConnectionManager {
             if token.is_some() {
                 self.try_send(Message::TokenState(TokenState::Valid));
             } else {
+                if self.has_credentials() {
+                    self.try_send(Message::PrivateChannelStatus(false));
+                }
                 self.try_send(Message::TokenState(TokenState::Unavailable));
             }
 
@@ -229,15 +232,18 @@ impl ConnectionManager {
                     Ok((mut private_write, private_read)) => {
                         if let Err(e) = ping(&mut private_write).await {
                             warn!("Private ping failed: {e}");
+                            self.try_send(Message::PrivateChannelStatus(false));
                             None
                         } else {
                             self.subscribe_private(&mut private_write, token_str).await;
                             info!("Private WebSocket connected and subscribed");
+                            self.try_send(Message::PrivateChannelStatus(true));
                             Some((private_write, private_read))
                         }
                     }
                     Err(e) => {
                         warn!("Private connection failed (continuing with public only): {e}");
+                        self.try_send(Message::PrivateChannelStatus(false));
                         None
                     }
                 }
@@ -402,10 +408,12 @@ impl ConnectionManager {
                             warn!("Private WebSocket error: {e}");
                             // Don't fail completely, just log and continue with public
                             private_read = None;
+                            self.try_send(Message::PrivateChannelStatus(false));
                         }
                         None => {
                             warn!("Private WebSocket stream ended");
                             private_read = None;
+                            self.try_send(Message::PrivateChannelStatus(false));
                         }
                     }
                 }

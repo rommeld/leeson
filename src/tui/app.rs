@@ -99,8 +99,10 @@ pub struct App {
     pub token_state: TokenState,
     /// Time of last heartbeat received.
     pub last_heartbeat: Option<Instant>,
-    /// Whether we have an authenticated session.
+    /// Whether we have an authenticated session (credentials valid at startup).
     pub authenticated: bool,
+    /// Whether the private WebSocket is currently connected.
+    pub private_connected: bool,
 
     // -- Risk State --
     /// Order pending operator confirmation.
@@ -167,6 +169,7 @@ impl App {
             token_state: TokenState::Unavailable,
             last_heartbeat: None,
             authenticated: false,
+            private_connected: false,
 
             should_quit: false,
         }

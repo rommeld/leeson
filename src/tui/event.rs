@@ -104,6 +104,9 @@ pub enum Message {
     /// Token lifecycle state change.
     TokenState(super::app::TokenState),
 
+    /// Private (authenticated) WebSocket channel connected or lost.
+    PrivateChannelStatus(bool),
+
     /// Request to quit the application.
     Quit,
 }
@@ -406,10 +409,16 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
         }
         Message::Disconnected => {
             app.connection_status = super::app::ConnectionStatus::Disconnected;
+            app.private_connected = false;
             None
         }
         Message::Reconnecting => {
             app.connection_status = super::app::ConnectionStatus::Reconnecting;
+            app.private_connected = false;
+            None
+        }
+        Message::PrivateChannelStatus(connected) => {
+            app.private_connected = connected;
             None
         }
         Message::AgentOutput { agent_index, line } => {
