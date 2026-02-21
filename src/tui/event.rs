@@ -68,6 +68,19 @@ pub enum Message {
     /// WebSocket reconnecting.
     Reconnecting,
 
+    /// Output line from an agent subprocess.
+    AgentOutput {
+        agent_index: usize,
+        line: String,
+    },
+    /// Agent subprocess signaled readiness.
+    AgentReady(usize),
+    /// Agent subprocess exited.
+    AgentExited {
+        agent_index: usize,
+        error: Option<String>,
+    },
+
     /// Request to quit the application.
     Quit,
 }
@@ -312,6 +325,22 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
         }
         Message::Reconnecting => {
             app.connection_status = super::app::ConnectionStatus::Reconnecting;
+            None
+        }
+        Message::AgentOutput { agent_index, line } => {
+            app.add_agent_output(agent_index, line);
+            None
+        }
+        Message::AgentReady(agent_index) => {
+            app.add_agent_output(agent_index, "[agent ready]".to_string());
+            None
+        }
+        Message::AgentExited { agent_index, error } => {
+            let msg = match error {
+                Some(e) => format!("[agent exited: {e}]"),
+                None => "[agent exited]".to_string(),
+            };
+            app.add_agent_output(agent_index, msg);
             None
         }
         Message::Quit => {

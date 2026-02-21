@@ -3,6 +3,7 @@ use std::sync::Arc;
 use tokio::sync::mpsc;
 
 use leeson::LeesonError;
+use leeson::agent::{AgentCommand, AgentHandle, spawn_agent};
 use leeson::auth::validate_credentials;
 use leeson::config::fetch_config;
 use leeson::models::Channel;
@@ -90,6 +91,13 @@ async fn main() -> Result<(), LeesonError> {
     // Spawn tick timer for periodic updates
     tui::event::spawn_tick_timer(tx.clone(), 250);
 
+    // Spawn agent subprocesses
+    let mut agents: [Option<AgentHandle>; 3] = [None, None, None];
+    match spawn_agent(0, "agents/agent1.py", tx.clone()) {
+        Ok(handle) => agents[0] = Some(handle),
+        Err(e) => app.show_error(format!("Failed to spawn Agent 1: {e}")),
+    }
+
     // Main event loop
     loop {
         // Render UI
@@ -122,13 +130,17 @@ async fn main() -> Result<(), LeesonError> {
                         let _ = cmd_tx.send(ConnectionCommand::PairUnsubscribed(symbol));
                     }
                     tui::event::Action::SendToAgent1(message) => {
-                        // Show user's message in Agent 1 output
-                        app.add_agent_output(0, format!("You: {}", message));
-                        // TODO: Send message to Agent 1 process and stream response
-                        app.add_agent_output(
-                            0,
-                            "Agent 1: [Awaiting agent integration]".to_string(),
-                        );
+                        app.add_agent_output(0, format!("You: {message}"));
+                        if let Some(ref handle) = agents[0] {
+                            let _ = handle
+                                .commands
+                                .send(AgentCommand::UserMessage(message));
+                        } else {
+                            app.add_agent_output(
+                                0,
+                                "[agent not running]".to_string(),
+                            );
+                        }
                     }
                     tui::event::Action::PlaceOrder => {
                         // TODO: Implement order placement
@@ -139,6 +151,11 @@ async fn main() -> Result<(), LeesonError> {
                 }
             }
         }
+    }
+
+    // Shut down running agents
+    for handle in agents.iter().flatten() {
+        let _ = handle.commands.send(AgentCommand::Shutdown);
     }
 
     // Restore terminal

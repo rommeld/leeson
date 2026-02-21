@@ -1,0 +1,23 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__acp__Bash",
+      "Bash(find:*)",
+      "Bash(cargo test:*)",
+      "mcp__acp__Write",
+      "mcp__acp__Edit",
+      "WebFetch(domain:docs.kraken.com)",
+      "Bash(cargo build:*)",
+      "Bash(cargo clippy:*)",
+      "Bash(cargo fmt:*)",
+      "Bash(cargo run:*)",
+      "Bash(curl:*)",
+      "Bash(cargo check:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh run view:*)",
+      "Bash(git -C /Users/denny/Documents/repos/leeson add -f certs/gts_root_r4.pem)",
+      "Bash(git -C /Users/denny/Documents/repos/leeson status)",
+      "WebFetch(domain:pyo3.rs)"
+    ]
+  }
+}

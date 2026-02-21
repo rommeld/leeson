@@ -4,6 +4,7 @@
 //! Kraken's public market data channels (ticker, book, trades, candles,
 //! instruments, and level-3 orders).
 
+pub mod agent;
 pub mod auth;
 pub mod config;
 pub mod error;
