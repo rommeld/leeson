@@ -10,7 +10,9 @@ use leeson::models::Channel;
 use leeson::models::book::BookDepth;
 use leeson::tls::build_tls_config;
 use leeson::tui::{self, App, Message};
-use leeson::websocket::{ConnectionCommand, ConnectionManager, subscribe, subscribe_book};
+use leeson::websocket::{
+    ConnectionCommand, ConnectionManager, subscribe, subscribe_book, unsubscribe,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), LeesonError> {
@@ -128,6 +130,15 @@ async fn main() -> Result<(), LeesonError> {
                     }
                     tui::event::Action::UnsubscribePair(symbol) => {
                         let _ = cmd_tx.send(ConnectionCommand::PairUnsubscribed(symbol));
+                    }
+                    tui::event::Action::ResyncBook(symbol) => {
+                        tracing::info!(symbol = %symbol, "resyncing order book");
+                        let mut guard = writer.lock().await;
+                        if let Some(ref mut w) = *guard {
+                            let symbols = vec![symbol];
+                            let _ = unsubscribe(w, &Channel::Book, &symbols, None).await;
+                            let _ = subscribe_book(w, &symbols, BookDepth::D25, None).await;
+                        }
                     }
                     tui::event::Action::SendToAgent1(message) => {
                         app.add_agent_output(0, format!("You: {message}"));
