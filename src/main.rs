@@ -123,6 +123,20 @@ async fn main() -> Result<(), LeesonError> {
 
         // Wait for next message
         if let Some(message) = rx.recv().await {
+            // Intercept token state changes to forward to agents
+            let message = match message {
+                Message::TokenState(state) => {
+                    for handle in agents.iter().flatten() {
+                        let _ = handle
+                            .commands
+                            .send(AgentCommand::TokenState(state.label().to_string()));
+                    }
+                    tui::event::update(&mut app, Message::TokenState(state));
+                    continue;
+                }
+                other => other,
+            };
+
             // Intercept AgentReady to send risk limits (needs risk_guard access)
             let message = match message {
                 Message::AgentReady(agent_index) => {
@@ -181,6 +195,7 @@ async fn main() -> Result<(), LeesonError> {
                                 if let Some(ref mut w) = *ws {
                                     let _ = add_order(w, request).await;
                                     risk_guard.record_submission(&symbol);
+                                    let _ = cmd_tx.send(ConnectionCommand::TokenUsed);
                                 }
                             }
                             Ok(RiskVerdict::RequiresConfirmation { reason }) => {
@@ -205,6 +220,7 @@ async fn main() -> Result<(), LeesonError> {
                             if let Some(ref mut w) = *ws {
                                 let _ = add_order(w, request).await;
                                 risk_guard.record_submission(&symbol);
+                                let _ = cmd_tx.send(ConnectionCommand::TokenUsed);
                             }
                         }
                     }

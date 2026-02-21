@@ -18,6 +18,8 @@ pub enum AgentCommand {
     RiskLimits(String),
     /// Result of an order submission attempt.
     OrderResult { success: bool, message: String },
+    /// Token state changed — agents should know if orders can be submitted.
+    TokenState(String),
     /// Request the agent to shut down gracefully.
     Shutdown,
 }
@@ -61,6 +63,7 @@ enum TuiToAgent {
     UserMessage { content: String },
     RiskLimits { description: String },
     OrderResult { success: bool, message: String },
+    TokenState { state: String },
     Shutdown,
 }
 
@@ -200,6 +203,7 @@ fn spawn_stdin_writer(
                 AgentCommand::OrderResult { success, message } => {
                     TuiToAgent::OrderResult { success, message }
                 }
+                AgentCommand::TokenState(state) => TuiToAgent::TokenState { state },
                 AgentCommand::Shutdown => TuiToAgent::Shutdown,
             };
             let mut json =

@@ -25,9 +25,13 @@ use crate::auth::get_websocket_token;
 use crate::models::Channel;
 use crate::models::book::BookDepth;
 use crate::tui::Message;
+use crate::tui::app::TokenState;
 
-/// Token is valid for 15 minutes; refresh 1 minute before expiry.
-const TOKEN_REFRESH_INTERVAL: Duration = Duration::from_secs(14 * 60);
+/// Refresh token after 12 minutes (3-minute buffer before 15-min expiry).
+const TOKEN_REFRESH_INTERVAL: Duration = Duration::from_secs(12 * 60);
+
+/// Warn agents after 9 minutes that the token is aging.
+const TOKEN_WARNING_THRESHOLD: Duration = Duration::from_secs(9 * 60);
 
 /// Initial backoff duration between reconnection attempts.
 const INITIAL_BACKOFF: Duration = Duration::from_secs(1);
@@ -47,6 +51,8 @@ pub enum ConnectionCommand {
     PairSubscribed(String),
     /// A trading pair was unsubscribed in the UI.
     PairUnsubscribed(String),
+    /// The token was used to submit an authenticated request (e.g., order placement).
+    TokenUsed,
 }
 
 /// Why the reader loop exited.
@@ -73,6 +79,8 @@ pub struct ConnectionManager {
     writer: Arc<tokio::sync::Mutex<Option<WsWriter>>>,
     cmd_rx: mpsc::UnboundedReceiver<ConnectionCommand>,
     subscribed_pairs: Vec<String>,
+    /// When the current token was last used for an authenticated operation.
+    token_last_used: Option<Instant>,
 }
 
 impl ConnectionManager {
@@ -97,6 +105,7 @@ impl ConnectionManager {
             writer,
             cmd_rx,
             subscribed_pairs: Vec::new(),
+            token_last_used: None,
         }
     }
 
@@ -169,6 +178,11 @@ impl ConnectionManager {
 
             // Fetch a token if we have credentials (for private connection)
             let token = self.fetch_token().await;
+            if token.is_some() {
+                let _ = self.tx.send(Message::TokenState(TokenState::Valid));
+            } else {
+                let _ = self.tx.send(Message::TokenState(TokenState::Unavailable));
+            }
 
             // Connect to PUBLIC endpoint for market data
             info!(url = %PUBLIC_WS_URL, "Connecting to public WebSocket");
@@ -249,11 +263,13 @@ impl ConnectionManager {
 
             match reason {
                 DisconnectReason::TokenExpired => {
+                    let _ = self.tx.send(Message::TokenState(TokenState::Refreshing));
                     info!("Token expiring, reconnecting with fresh token");
                     // No backoff for planned refresh
                 }
                 DisconnectReason::ConnectionError => {
                     let _ = self.tx.send(Message::Disconnected);
+                    let _ = self.tx.send(Message::TokenState(TokenState::Refreshing));
                     info!(
                         backoff_secs = backoff.as_secs(),
                         "Connection lost, backing off"
@@ -281,10 +297,17 @@ impl ConnectionManager {
         // Split private connection if available
         let mut private_read = private_connection.map(|(_, read)| read);
 
-        // Build the token refresh deadline
+        // Build the token refresh deadline and warning deadline
         let refresh_deadline = if token.is_some() {
             Some(tokio::time::Instant::from_std(
                 token_fetched_at + TOKEN_REFRESH_INTERVAL,
+            ))
+        } else {
+            None
+        };
+        let warning_deadline = if token.is_some() {
+            Some(tokio::time::Instant::from_std(
+                token_fetched_at + TOKEN_WARNING_THRESHOLD,
             ))
         } else {
             None
@@ -297,6 +320,14 @@ impl ConnectionManager {
             }
         };
         tokio::pin!(token_sleep);
+
+        let warning_sleep = async {
+            match warning_deadline {
+                Some(deadline) => tokio::time::sleep_until(deadline).await,
+                None => std::future::pending::<()>().await,
+            }
+        };
+        tokio::pin!(warning_sleep);
 
         loop {
             tokio::select! {
@@ -362,11 +393,28 @@ impl ConnectionManager {
                         Some(ConnectionCommand::PairUnsubscribed(symbol)) => {
                             self.subscribed_pairs.retain(|s| s != &symbol);
                         }
+                        Some(ConnectionCommand::TokenUsed) => {
+                            self.token_last_used = Some(Instant::now());
+                            debug!(
+                                token_age_secs = token_fetched_at.elapsed().as_secs(),
+                                "token used for authenticated operation"
+                            );
+                        }
                         None => {
                             // Command channel closed, app is shutting down
                             return DisconnectReason::Shutdown;
                         }
                     }
+                }
+
+                () = &mut warning_sleep => {
+                    let _ = self.tx.send(Message::TokenState(TokenState::ExpiringSoon));
+                    info!(
+                        token_age_secs = token_fetched_at.elapsed().as_secs(),
+                        last_used = ?self.token_last_used.map(|t| t.elapsed()),
+                        "token approaching expiry"
+                    );
+                    // warning_sleep is now completed — won't fire again
                 }
 
                 () = &mut token_sleep => {

@@ -92,6 +92,8 @@ pub struct App {
     // -- Connection State --
     /// WebSocket connection status.
     pub connection_status: ConnectionStatus,
+    /// Authentication token lifecycle state.
+    pub token_state: TokenState,
     /// Time of last heartbeat received.
     pub last_heartbeat: Option<Instant>,
     /// Whether we have an authenticated session.
@@ -159,6 +161,7 @@ impl App {
             pending_order: None,
 
             connection_status: ConnectionStatus::Disconnected,
+            token_state: TokenState::Unavailable,
             last_heartbeat: None,
             authenticated: false,
 
@@ -398,6 +401,32 @@ pub enum Mode {
     Normal,
     Insert,
     Confirm,
+}
+
+/// Authentication token lifecycle state.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TokenState {
+    /// No credentials configured.
+    #[default]
+    Unavailable,
+    /// Token is fresh and valid.
+    Valid,
+    /// Token is approaching expiry (past 9-minute mark).
+    ExpiringSoon,
+    /// Token is being refreshed (reconnecting).
+    Refreshing,
+}
+
+impl TokenState {
+    /// Returns a stable label for serialization to agents.
+    pub fn label(&self) -> &'static str {
+        match self {
+            TokenState::Unavailable => "unavailable",
+            TokenState::Valid => "valid",
+            TokenState::ExpiringSoon => "expiring_soon",
+            TokenState::Refreshing => "refreshing",
+        }
+    }
 }
 
 /// WebSocket connection status.

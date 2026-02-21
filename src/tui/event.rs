@@ -89,6 +89,9 @@ pub enum Message {
         price: Option<String>,
     },
 
+    /// Token lifecycle state change.
+    TokenState(super::app::TokenState),
+
     /// Request to quit the application.
     Quit,
 }
@@ -448,6 +451,10 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                 None => "[agent exited]".to_string(),
             };
             app.add_agent_output(agent_index, msg);
+            None
+        }
+        Message::TokenState(state) => {
+            app.token_state = state;
             None
         }
         Message::Quit => {
