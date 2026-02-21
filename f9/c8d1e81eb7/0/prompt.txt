@@ -1,0 +1,1 @@
+Enforce per-collection capacity limits. Use binary search insertion instead of sort-after-push for book levels. Check @src/tui/app.rs and @src/tui/event.rs
