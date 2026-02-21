@@ -74,7 +74,7 @@ enum TuiToAgent {
 pub fn spawn_agent(
     agent_index: usize,
     script_path: &str,
-    tx: mpsc::UnboundedSender<Message>,
+    tx: mpsc::Sender<Message>,
 ) -> crate::Result<AgentHandle> {
     let mut child = Command::new("python3")
         .arg(script_path)
@@ -121,23 +121,23 @@ pub fn spawn_agent(
 fn spawn_stdout_reader(
     agent_index: usize,
     stdout: tokio::process::ChildStdout,
-    tx: mpsc::UnboundedSender<Message>,
+    tx: mpsc::Sender<Message>,
 ) {
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
         while let Ok(Some(line)) = lines.next_line().await {
             match serde_json::from_str::<AgentToTui>(&line) {
                 Ok(AgentToTui::Output { agent, line }) => {
-                    let _ = tx.send(Message::AgentOutput {
+                    let _ = tx.try_send(Message::AgentOutput {
                         agent_index: agent,
                         line,
                     });
                 }
                 Ok(AgentToTui::Ready) => {
-                    let _ = tx.send(Message::AgentReady(agent_index));
+                    let _ = tx.try_send(Message::AgentReady(agent_index));
                 }
                 Ok(AgentToTui::Error { message }) => {
-                    let _ = tx.send(Message::AgentOutput {
+                    let _ = tx.try_send(Message::AgentOutput {
                         agent_index,
                         line: format!("[error] {message}"),
                     });
@@ -149,7 +149,7 @@ fn spawn_stdout_reader(
                     qty,
                     price,
                 }) => {
-                    let _ = tx.send(Message::AgentOrderRequest {
+                    let _ = tx.try_send(Message::AgentOrderRequest {
                         agent_index,
                         symbol,
                         side,
@@ -160,11 +160,11 @@ fn spawn_stdout_reader(
                 }
                 Err(_) => {
                     // Non-JSON line — pass through as raw output
-                    let _ = tx.send(Message::AgentOutput { agent_index, line });
+                    let _ = tx.try_send(Message::AgentOutput { agent_index, line });
                 }
             }
         }
-        let _ = tx.send(Message::AgentExited {
+        let _ = tx.try_send(Message::AgentExited {
             agent_index,
             error: None,
         });
@@ -175,12 +175,12 @@ fn spawn_stdout_reader(
 fn spawn_stderr_reader(
     agent_index: usize,
     stderr: tokio::process::ChildStderr,
-    tx: mpsc::UnboundedSender<Message>,
+    tx: mpsc::Sender<Message>,
 ) {
     tokio::spawn(async move {
         let mut lines = BufReader::new(stderr).lines();
         while let Ok(Some(line)) = lines.next_line().await {
-            let _ = tx.send(Message::AgentOutput {
+            let _ = tx.try_send(Message::AgentOutput {
                 agent_index,
                 line: format!("[stderr] {line}"),
             });
@@ -193,7 +193,7 @@ fn spawn_stdin_writer(
     agent_index: usize,
     mut stdin: tokio::process::ChildStdin,
     mut cmd_rx: mpsc::UnboundedReceiver<AgentCommand>,
-    tx: mpsc::UnboundedSender<Message>,
+    tx: mpsc::Sender<Message>,
 ) {
     tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
@@ -210,7 +210,7 @@ fn spawn_stdin_writer(
                 serde_json::to_string(&msg).expect("TuiToAgent serialization should not fail");
             json.push('\n');
             if let Err(e) = stdin.write_all(json.as_bytes()).await {
-                let _ = tx.send(Message::AgentExited {
+                let _ = tx.try_send(Message::AgentExited {
                     agent_index,
                     error: Some(format!("stdin write failed: {e}")),
                 });

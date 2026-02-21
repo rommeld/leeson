@@ -74,11 +74,13 @@ async fn main() -> Result<(), LeesonError> {
         app.show_error(format!("Auth failed: {}", error));
     }
 
-    // Create message channel (shared with connection manager)
-    let (tx, mut rx) = mpsc::unbounded_channel::<Message>();
+    // Create message channel (shared with connection manager).
+    // 512 slots: absorbs WebSocket data bursts without blocking producers.
+    let (tx, mut rx) = mpsc::channel::<Message>(512);
 
-    // Create command channel for subscription tracking
-    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<ConnectionCommand>();
+    // Create command channel for subscription tracking.
+    // 32 slots: commands are infrequent (subscribe/unsubscribe/token-used).
+    let (cmd_tx, cmd_rx) = mpsc::channel::<ConnectionCommand>(32);
 
     // Shared writer: connection manager writes, main loop reads
     let writer: Arc<tokio::sync::Mutex<Option<leeson::websocket::WsWriter>>> =
@@ -162,10 +164,15 @@ async fn main() -> Result<(), LeesonError> {
                             let _ = subscribe(w, &Channel::Candles, &symbols, None).await;
                             let _ = subscribe(w, &Channel::Trades, &symbols, None).await;
                         }
-                        let _ = cmd_tx.send(ConnectionCommand::PairSubscribed(symbol));
+                        if let Err(e) = cmd_tx.try_send(ConnectionCommand::PairSubscribed(symbol)) {
+                            tracing::warn!("command channel full, dropping PairSubscribed: {e}");
+                        }
                     }
                     tui::event::Action::UnsubscribePair(symbol) => {
-                        let _ = cmd_tx.send(ConnectionCommand::PairUnsubscribed(symbol));
+                        if let Err(e) = cmd_tx.try_send(ConnectionCommand::PairUnsubscribed(symbol))
+                        {
+                            tracing::warn!("command channel full, dropping PairUnsubscribed: {e}");
+                        }
                     }
                     tui::event::Action::ResyncBook(symbol) => {
                         tracing::info!(symbol = %symbol, "resyncing order book");
@@ -195,7 +202,7 @@ async fn main() -> Result<(), LeesonError> {
                                 if let Some(ref mut w) = *ws {
                                     let _ = add_order(w, request).await;
                                     risk_guard.record_submission(&symbol);
-                                    let _ = cmd_tx.send(ConnectionCommand::TokenUsed);
+                                    let _ = cmd_tx.try_send(ConnectionCommand::TokenUsed);
                                 }
                             }
                             Ok(RiskVerdict::RequiresConfirmation { reason }) => {
@@ -220,7 +227,7 @@ async fn main() -> Result<(), LeesonError> {
                             if let Some(ref mut w) = *ws {
                                 let _ = add_order(w, request).await;
                                 risk_guard.record_submission(&symbol);
-                                let _ = cmd_tx.send(ConnectionCommand::TokenUsed);
+                                let _ = cmd_tx.try_send(ConnectionCommand::TokenUsed);
                             }
                         }
                     }

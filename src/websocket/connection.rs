@@ -75,9 +75,9 @@ pub struct ConnectionManager {
     tls_config: Arc<rustls::ClientConfig>,
     api_key: Option<Zeroizing<String>>,
     api_secret: Option<Zeroizing<String>>,
-    tx: mpsc::UnboundedSender<Message>,
+    tx: mpsc::Sender<Message>,
     writer: Arc<tokio::sync::Mutex<Option<WsWriter>>>,
-    cmd_rx: mpsc::UnboundedReceiver<ConnectionCommand>,
+    cmd_rx: mpsc::Receiver<ConnectionCommand>,
     subscribed_pairs: Vec<String>,
     /// When the current token was last used for an authenticated operation.
     token_last_used: Option<Instant>,
@@ -93,9 +93,9 @@ impl ConnectionManager {
         tls_config: Arc<rustls::ClientConfig>,
         api_key: Option<String>,
         api_secret: Option<String>,
-        tx: mpsc::UnboundedSender<Message>,
+        tx: mpsc::Sender<Message>,
         writer: Arc<tokio::sync::Mutex<Option<WsWriter>>>,
-        cmd_rx: mpsc::UnboundedReceiver<ConnectionCommand>,
+        cmd_rx: mpsc::Receiver<ConnectionCommand>,
     ) -> Self {
         Self {
             tls_config,
@@ -106,6 +106,19 @@ impl ConnectionManager {
             cmd_rx,
             subscribed_pairs: Vec::new(),
             token_last_used: None,
+        }
+    }
+
+    /// Sends a message to the TUI, logging a warning when the channel is full.
+    fn try_send(&self, message: Message) {
+        match self.tx.try_send(message) {
+            Ok(()) => {}
+            Err(mpsc::error::TrySendError::Full(_)) => {
+                warn!("message channel full, dropping message");
+            }
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                debug!("message channel closed");
+            }
         }
     }
 
@@ -174,14 +187,14 @@ impl ConnectionManager {
 
         loop {
             // Notify UI we're reconnecting
-            let _ = self.tx.send(Message::Reconnecting);
+            self.try_send(Message::Reconnecting);
 
             // Fetch a token if we have credentials (for private connection)
             let token = self.fetch_token().await;
             if token.is_some() {
-                let _ = self.tx.send(Message::TokenState(TokenState::Valid));
+                self.try_send(Message::TokenState(TokenState::Valid));
             } else {
-                let _ = self.tx.send(Message::TokenState(TokenState::Unavailable));
+                self.try_send(Message::TokenState(TokenState::Unavailable));
             }
 
             // Connect to PUBLIC endpoint for market data
@@ -191,7 +204,7 @@ impl ConnectionManager {
                 Ok(pair) => pair,
                 Err(e) => {
                     error!("Public connection failed: {e}");
-                    let _ = self.tx.send(Message::Disconnected);
+                    self.try_send(Message::Disconnected);
                     info!(backoff_secs = backoff.as_secs(), "Backing off before retry");
                     tokio::time::sleep(backoff).await;
                     backoff = (backoff * 2).min(MAX_BACKOFF);
@@ -202,7 +215,7 @@ impl ConnectionManager {
             // Ping and subscribe on public connection
             if let Err(e) = ping(&mut public_write).await {
                 warn!("Public ping failed: {e}");
-                let _ = self.tx.send(Message::Disconnected);
+                self.try_send(Message::Disconnected);
                 tokio::time::sleep(backoff).await;
                 backoff = (backoff * 2).min(MAX_BACKOFF);
                 continue;
@@ -239,7 +252,7 @@ impl ConnectionManager {
                 let mut guard = self.writer.lock().await;
                 *guard = Some(public_write);
             }
-            let _ = self.tx.send(Message::Connected);
+            self.try_send(Message::Connected);
 
             // Reset backoff on successful connection
             backoff = INITIAL_BACKOFF;
@@ -263,13 +276,13 @@ impl ConnectionManager {
 
             match reason {
                 DisconnectReason::TokenExpired => {
-                    let _ = self.tx.send(Message::TokenState(TokenState::Refreshing));
+                    self.try_send(Message::TokenState(TokenState::Refreshing));
                     info!("Token expiring, reconnecting with fresh token");
                     // No backoff for planned refresh
                 }
                 DisconnectReason::ConnectionError => {
-                    let _ = self.tx.send(Message::Disconnected);
-                    let _ = self.tx.send(Message::TokenState(TokenState::Refreshing));
+                    self.try_send(Message::Disconnected);
+                    self.try_send(Message::TokenState(TokenState::Refreshing));
                     info!(
                         backoff_secs = backoff.as_secs(),
                         "Connection lost, backing off"
@@ -338,9 +351,17 @@ impl ConnectionManager {
                             debug!("Public WS message: {}", text);
                             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text)
                                 && let Some(message) = parse_ws_message(value)
-                                    && self.tx.send(message).is_err() {
+                            {
+                                match self.tx.try_send(message) {
+                                    Ok(()) => {}
+                                    Err(mpsc::error::TrySendError::Full(_)) => {
+                                        warn!("message channel full, dropping public WS message");
+                                    }
+                                    Err(mpsc::error::TrySendError::Closed(_)) => {
                                         return DisconnectReason::Shutdown;
                                     }
+                                }
+                            }
                         }
                         Some(Ok(_)) => {} // Binary/Ping/Pong/Close frames
                         Some(Err(e)) => {
@@ -366,9 +387,17 @@ impl ConnectionManager {
                             debug!("Private WS message: {}", text);
                             if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text)
                                 && let Some(message) = parse_ws_message(value)
-                                    && self.tx.send(message).is_err() {
+                            {
+                                match self.tx.try_send(message) {
+                                    Ok(()) => {}
+                                    Err(mpsc::error::TrySendError::Full(_)) => {
+                                        warn!("message channel full, dropping private WS message");
+                                    }
+                                    Err(mpsc::error::TrySendError::Closed(_)) => {
                                         return DisconnectReason::Shutdown;
                                     }
+                                }
+                            }
                         }
                         Some(Ok(_)) => {} // Binary/Ping/Pong/Close frames
                         Some(Err(e)) => {
@@ -408,7 +437,7 @@ impl ConnectionManager {
                 }
 
                 () = &mut warning_sleep => {
-                    let _ = self.tx.send(Message::TokenState(TokenState::ExpiringSoon));
+                    self.try_send(Message::TokenState(TokenState::ExpiringSoon));
                     info!(
                         token_age_secs = token_fetched_at.elapsed().as_secs(),
                         last_used = ?self.token_last_used.map(|t| t.elapsed()),

@@ -97,7 +97,7 @@ pub enum Message {
 }
 
 /// Spawns a task that polls for terminal events and sends them to a channel.
-pub fn spawn_event_reader(tx: mpsc::UnboundedSender<Message>) {
+pub fn spawn_event_reader(tx: mpsc::Sender<Message>) {
     tokio::spawn(async move {
         loop {
             // Poll for events with a 50ms timeout
@@ -111,13 +111,21 @@ pub fn spawn_event_reader(tx: mpsc::UnboundedSender<Message>) {
             .await
             {
                 Ok(Some(CrosstermEvent::Key(key))) => {
-                    if tx.send(Message::Input(Event::Key(key))).is_err() {
-                        break;
+                    match tx.try_send(Message::Input(Event::Key(key))) {
+                        Ok(()) => {}
+                        Err(mpsc::error::TrySendError::Full(_)) => {
+                            tracing::warn!("message channel full, dropping key event");
+                        }
+                        Err(mpsc::error::TrySendError::Closed(_)) => break,
                     }
                 }
                 Ok(Some(CrosstermEvent::Resize(w, h))) => {
-                    if tx.send(Message::Input(Event::Resize(w, h))).is_err() {
-                        break;
+                    match tx.try_send(Message::Input(Event::Resize(w, h))) {
+                        Ok(()) => {}
+                        Err(mpsc::error::TrySendError::Full(_)) => {
+                            tracing::warn!("message channel full, dropping resize event");
+                        }
+                        Err(mpsc::error::TrySendError::Closed(_)) => break,
                     }
                 }
                 Ok(_) => {}
@@ -128,13 +136,16 @@ pub fn spawn_event_reader(tx: mpsc::UnboundedSender<Message>) {
 }
 
 /// Spawns a task that sends periodic tick events.
-pub fn spawn_tick_timer(tx: mpsc::UnboundedSender<Message>, interval_ms: u64) {
+pub fn spawn_tick_timer(tx: mpsc::Sender<Message>, interval_ms: u64) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_millis(interval_ms));
         loop {
             interval.tick().await;
-            if tx.send(Message::Input(Event::Tick)).is_err() {
-                break;
+            match tx.try_send(Message::Input(Event::Tick)) {
+                Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {
+                    // Ticks are periodic; dropping one is harmless.
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => break,
             }
         }
     });
