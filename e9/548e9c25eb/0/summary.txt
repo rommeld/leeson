@@ -1,0 +1,18 @@
+All done. Here's a summary of the changes:
+
+**`src/tui/app.rs`** — Added `TokenState` enum (`Unavailable`, `Valid`, `ExpiringSoon`, `Refreshing`) with a `label()` method for agent serialization, and a `token_state` field on `App`.
+
+**`src/tui/event.rs`** — Added `Message::TokenState` variant and its handler in `update()` to set `app.token_state`.
+
+**`src/agent.rs`** — Added `AgentCommand::TokenState(String)` and `TuiToAgent::TokenState { state }` so agents receive token lifecycle notifications over stdin.
+
+**`src/websocket/connection.rs`** — 
+- Increased refresh buffer from 1 min to 3 min (`TOKEN_REFRESH_INTERVAL` = 12 min)
+- Added `TOKEN_WARNING_THRESHOLD` at 9 min
+- Added `token_last_used: Option<Instant>` field
+- Added `ConnectionCommand::TokenUsed` variant
+- Emits `TokenState::Valid`/`Unavailable` after token fetch, `Refreshing` before reconnect, `ExpiringSoon` when warning timer fires
+- Handles `TokenUsed` command to track last usage time
+- Logs token age and last-used time on token events
+
+**`src/main.rs`** — Intercepts `Message::TokenState` to forward to all running agents, sends `ConnectionCommand::TokenUsed` after successful order submission (both direct and confirmed).
