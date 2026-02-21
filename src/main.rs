@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
@@ -7,11 +8,15 @@ use leeson::agent::{AgentCommand, AgentHandle, spawn_agent};
 use leeson::auth::validate_credentials;
 use leeson::config::fetch_config;
 use leeson::models::Channel;
+use leeson::models::add_order::AddOrderRequest;
 use leeson::models::book::BookDepth;
+use leeson::risk::RiskGuard;
+use leeson::risk::config::RiskConfig;
 use leeson::tls::build_tls_config;
+use leeson::tui::app::{Mode, PendingOrder};
 use leeson::tui::{self, App, Message};
 use leeson::websocket::{
-    ConnectionCommand, ConnectionManager, subscribe, subscribe_book, unsubscribe,
+    ConnectionCommand, ConnectionManager, add_order, subscribe, subscribe_book, unsubscribe,
 };
 
 #[tokio::main]
@@ -27,6 +32,10 @@ async fn main() -> Result<(), LeesonError> {
 
     let app_config = fetch_config()?;
     let tls_config = Arc::new(build_tls_config()?);
+
+    // Load risk configuration (required — running without risk limits is a hard error)
+    let risk_config = RiskConfig::load(Path::new("risk.json"))?;
+    let mut risk_guard = RiskGuard::new(risk_config);
 
     let has_credentials = matches!(
         (&app_config.kraken.api_key, &app_config.kraken.api_secret),
@@ -114,6 +123,19 @@ async fn main() -> Result<(), LeesonError> {
 
         // Wait for next message
         if let Some(message) = rx.recv().await {
+            // Intercept AgentReady to send risk limits (needs risk_guard access)
+            let message = match message {
+                Message::AgentReady(agent_index) => {
+                    app.add_agent_output(agent_index, "[agent ready]".to_string());
+                    if let Some(ref handle) = agents[agent_index] {
+                        let desc = risk_guard.config().describe_limits();
+                        let _ = handle.commands.send(AgentCommand::RiskLimits(desc));
+                    }
+                    continue;
+                }
+                other => other,
+            };
+
             // Handle actions that require WebSocket writes
             if let Some(action) = tui::event::update(&mut app, message) {
                 match action {
@@ -143,18 +165,48 @@ async fn main() -> Result<(), LeesonError> {
                     tui::event::Action::SendToAgent1(message) => {
                         app.add_agent_output(0, format!("You: {message}"));
                         if let Some(ref handle) = agents[0] {
-                            let _ = handle
-                                .commands
-                                .send(AgentCommand::UserMessage(message));
+                            let _ = handle.commands.send(AgentCommand::UserMessage(message));
                         } else {
-                            app.add_agent_output(
-                                0,
-                                "[agent not running]".to_string(),
-                            );
+                            app.add_agent_output(0, "[agent not running]".to_string());
                         }
                     }
-                    tui::event::Action::PlaceOrder => {
-                        // TODO: Implement order placement
+                    tui::event::Action::SubmitOrder(boxed_params) => {
+                        use leeson::risk::RiskVerdict;
+                        let params = *boxed_params;
+                        let symbol = params.symbol.clone();
+                        match risk_guard.check_order(&params) {
+                            Ok(RiskVerdict::Approved) => {
+                                let request = AddOrderRequest::new(params, None);
+                                let mut ws = writer.lock().await;
+                                if let Some(ref mut w) = *ws {
+                                    let _ = add_order(w, request).await;
+                                    risk_guard.record_submission(&symbol);
+                                }
+                            }
+                            Ok(RiskVerdict::RequiresConfirmation { reason }) => {
+                                app.pending_order = Some(PendingOrder {
+                                    params,
+                                    reason: reason.clone(),
+                                });
+                                app.mode = Mode::Confirm;
+                                tracing::info!(%reason, "order requires confirmation");
+                            }
+                            Err(e) => {
+                                app.show_error(format!("Order rejected: {e}"));
+                                tracing::warn!(%e, "order rejected by risk guard");
+                            }
+                        }
+                    }
+                    tui::event::Action::ConfirmOrder => {
+                        if let Some(pending) = app.pending_order.take() {
+                            let symbol = pending.params.symbol.clone();
+                            let request = AddOrderRequest::new(pending.params, None);
+                            let mut ws = writer.lock().await;
+                            if let Some(ref mut w) = *ws {
+                                let _ = add_order(w, request).await;
+                                risk_guard.record_submission(&symbol);
+                            }
+                        }
                     }
                     tui::event::Action::CancelOrder(_order_id) => {
                         // TODO: Implement order cancellation

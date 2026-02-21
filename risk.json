@@ -1,0 +1,20 @@
+{
+  "defaults": {
+    "max_order_qty": "1.0",
+    "max_notional_value": "100000",
+    "confirm_above_notional": "50000",
+    "max_trades_per_day": 50,
+    "max_trades_per_week": 200,
+    "max_trades_per_month": 500
+  },
+  "symbols": {
+    "BTC/USD": {
+      "max_order_qty": "0.5",
+      "max_notional_value": "50000",
+      "confirm_above_notional": "25000"
+    },
+    "ETH/USD": {
+      "max_order_qty": "10.0"
+    }
+  }
+}

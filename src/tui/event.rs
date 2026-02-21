@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use crossterm::event::{self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyModifiers};
 use tokio::sync::mpsc;
 
+use crate::models::add_order::AddOrderParams;
 use crate::models::balance::BalanceResponse;
 use crate::models::book::{BookUpdateResponse, calculate_checksum};
 use crate::models::candle::CandleUpdateResponse;
@@ -69,16 +70,23 @@ pub enum Message {
     Reconnecting,
 
     /// Output line from an agent subprocess.
-    AgentOutput {
-        agent_index: usize,
-        line: String,
-    },
+    AgentOutput { agent_index: usize, line: String },
     /// Agent subprocess signaled readiness.
     AgentReady(usize),
     /// Agent subprocess exited.
     AgentExited {
         agent_index: usize,
         error: Option<String>,
+    },
+
+    /// Agent requested an order placement.
+    AgentOrderRequest {
+        agent_index: usize,
+        symbol: String,
+        side: String,
+        order_type: String,
+        qty: String,
+        price: Option<String>,
     },
 
     /// Request to quit the application.
@@ -373,6 +381,67 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
             app.add_agent_output(agent_index, "[agent ready]".to_string());
             None
         }
+        Message::AgentOrderRequest {
+            agent_index,
+            symbol,
+            side,
+            order_type,
+            qty,
+            price,
+        } => {
+            use crate::models::add_order::{AddOrderBuilder, OrderSide};
+            use rust_decimal::Decimal;
+            use std::str::FromStr;
+
+            let parse_result = (|| -> Result<AddOrderParams, String> {
+                let side = match side.to_lowercase().as_str() {
+                    "buy" => OrderSide::Buy,
+                    "sell" => OrderSide::Sell,
+                    other => return Err(format!("invalid side: {other}")),
+                };
+                let qty = Decimal::from_str(&qty).map_err(|e| format!("invalid qty: {e}"))?;
+
+                let builder = match order_type.to_lowercase().as_str() {
+                    "market" => AddOrderBuilder::market(side, &symbol, qty),
+                    "limit" => {
+                        let price_str = price.as_deref().ok_or("limit order requires a price")?;
+                        let price = Decimal::from_str(price_str)
+                            .map_err(|e| format!("invalid price: {e}"))?;
+                        AddOrderBuilder::limit(side, &symbol, qty, price)
+                    }
+                    other => return Err(format!("unsupported order type: {other}")),
+                };
+
+                // Use a placeholder token — real token is set in main.rs before submission
+                builder
+                    .build("pending")
+                    .map_err(|e| format!("order validation failed: {e}"))
+            })();
+
+            match parse_result {
+                Ok(params) => {
+                    app.add_agent_output(
+                        agent_index,
+                        format!(
+                            "[order] {:?} {:?} {} {} @ {}",
+                            params.side,
+                            params.order_type,
+                            params.order_qty,
+                            params.symbol,
+                            params
+                                .limit_price
+                                .map_or("market".to_string(), |p| p.to_string())
+                        ),
+                    );
+                    return Some(Action::SubmitOrder(Box::new(params)));
+                }
+                Err(e) => {
+                    app.add_agent_output(agent_index, format!("[order error] {e}"));
+                    app.show_error(format!("Agent order error: {e}"));
+                }
+            }
+            None
+        }
         Message::AgentExited { agent_index, error } => {
             let msg = match error {
                 Some(e) => format!("[agent exited: {e}]"),
@@ -399,8 +468,10 @@ pub enum Action {
     UnsubscribePair(String),
     /// Re-subscribe to a pair's book channel after checksum mismatch.
     ResyncBook(String),
-    /// Place a new order.
-    PlaceOrder,
+    /// Submit an order (validated by risk guard before sending).
+    SubmitOrder(Box<AddOrderParams>),
+    /// Operator confirmed a pending order.
+    ConfirmOrder,
     /// Cancel an order.
     CancelOrder(String),
 }
@@ -712,10 +783,10 @@ fn handle_confirm_mode(app: &mut App, key: KeyEvent) -> Option<Action> {
     match key.code {
         KeyCode::Char('y') | KeyCode::Enter => {
             app.mode = Mode::Normal;
-            // TODO: Execute confirmed action
-            None
+            Some(Action::ConfirmOrder)
         }
         KeyCode::Char('n') | KeyCode::Esc => {
+            app.pending_order = None;
             app.mode = Mode::Normal;
             None
         }

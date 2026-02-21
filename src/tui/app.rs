@@ -5,6 +5,7 @@ use std::time::Instant;
 
 use rust_decimal::Decimal;
 
+use crate::models::add_order::AddOrderParams;
 use crate::models::book::PriceLevel;
 use crate::models::candle::CandleData;
 use crate::models::execution::ExecutionData;
@@ -96,6 +97,10 @@ pub struct App {
     /// Whether we have an authenticated session.
     pub authenticated: bool,
 
+    // -- Risk State --
+    /// Order pending operator confirmation.
+    pub pending_order: Option<PendingOrder>,
+
     // -- Internal --
     /// Flag to signal application should quit.
     pub should_quit: bool,
@@ -150,6 +155,8 @@ impl App {
             orders_view: OrdersView::Open,
             pair_selector_index: 0,
             error_message: None,
+
+            pending_order: None,
 
             connection_status: ConnectionStatus::Disconnected,
             last_heartbeat: None,
@@ -464,6 +471,15 @@ pub struct ExecutedTrade {
     pub price: Decimal,
     /// Realized P&L from this trade.
     pub pnl: Option<Decimal>,
+}
+
+/// Order pending operator confirmation before submission.
+#[derive(Debug, Clone)]
+pub struct PendingOrder {
+    /// The order parameters to submit if confirmed.
+    pub params: AddOrderParams,
+    /// Human-readable reason why confirmation is required.
+    pub reason: String,
 }
 
 /// Error message with timestamp for auto-clear.

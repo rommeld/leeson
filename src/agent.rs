@@ -14,6 +14,10 @@ use crate::tui::Message;
 pub enum AgentCommand {
     /// A user-typed message to forward to the agent.
     UserMessage(String),
+    /// Risk limits description for the agent's system prompt.
+    RiskLimits(String),
+    /// Result of an order submission attempt.
+    OrderResult { success: bool, message: String },
     /// Request the agent to shut down gracefully.
     Shutdown,
 }
@@ -40,6 +44,14 @@ enum AgentToTui {
     Error {
         message: String,
     },
+    PlaceOrder {
+        symbol: String,
+        side: String,
+        order_type: String,
+        qty: String,
+        #[serde(default)]
+        price: Option<String>,
+    },
 }
 
 /// JSON message from the TUI to a Python agent (stdin).
@@ -47,6 +59,8 @@ enum AgentToTui {
 #[serde(tag = "type", rename_all = "snake_case")]
 enum TuiToAgent {
     UserMessage { content: String },
+    RiskLimits { description: String },
+    OrderResult { success: bool, message: String },
     Shutdown,
 }
 
@@ -125,12 +139,25 @@ fn spawn_stdout_reader(
                         line: format!("[error] {message}"),
                     });
                 }
+                Ok(AgentToTui::PlaceOrder {
+                    symbol,
+                    side,
+                    order_type,
+                    qty,
+                    price,
+                }) => {
+                    let _ = tx.send(Message::AgentOrderRequest {
+                        agent_index,
+                        symbol,
+                        side,
+                        order_type,
+                        qty,
+                        price,
+                    });
+                }
                 Err(_) => {
                     // Non-JSON line — pass through as raw output
-                    let _ = tx.send(Message::AgentOutput {
-                        agent_index,
-                        line,
-                    });
+                    let _ = tx.send(Message::AgentOutput { agent_index, line });
                 }
             }
         }
@@ -169,6 +196,10 @@ fn spawn_stdin_writer(
         while let Some(cmd) = cmd_rx.recv().await {
             let msg = match cmd {
                 AgentCommand::UserMessage(content) => TuiToAgent::UserMessage { content },
+                AgentCommand::RiskLimits(description) => TuiToAgent::RiskLimits { description },
+                AgentCommand::OrderResult { success, message } => {
+                    TuiToAgent::OrderResult { success, message }
+                }
                 AgentCommand::Shutdown => TuiToAgent::Shutdown,
             };
             let mut json =
