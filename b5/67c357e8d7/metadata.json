@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "b567c357e8d7",
+  "strategy": "auto-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".git/hooks/pre-commit",
+    "Cargo.toml",
+    "src/config.rs",
+    "src/error.rs",
+    "tests/config_test.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b5/67c357e8d7/0/metadata.json",
+      "transcript": "/b5/67c357e8d7/0/full.jsonl",
+      "context": "",
+      "content_hash": "/b5/67c357e8d7/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 35,
+    "cache_creation_tokens": 31385,
+    "cache_read_tokens": 2233958,
+    "output_tokens": 1603,
+    "api_call_count": 33
+  }
+}

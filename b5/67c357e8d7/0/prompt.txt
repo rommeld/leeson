@@ -1,0 +1,1 @@
+Delete the config file, enforce credentials via environment variables only, add a pre-commit hook to reject TOML files matching credential patterns, and rotate the exposed key pair immediately.
