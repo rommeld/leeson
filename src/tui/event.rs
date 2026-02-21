@@ -19,6 +19,13 @@ use crate::models::{
 
 use super::app::{App, AssetBalance, Focus, MAX_ORDERBOOK_HISTORY, Mode, OrderBookSnapshot, Tab};
 
+/// Maximum length (in bytes) for agent input text.
+///
+/// Prevents unbounded memory growth in the input buffer and guards against
+/// oversized payloads being serialized to agent stdin. 4 KiB is generous
+/// for a single operator command.
+const MAX_INPUT_LENGTH: usize = 4096;
+
 /// Events that can occur in the application.
 #[derive(Debug)]
 pub enum Event {
@@ -748,7 +755,7 @@ fn handle_insert_mode(app: &mut App, key: KeyEvent) -> Option<Action> {
 
     match key.code {
         KeyCode::Enter => {
-            let command = std::mem::take(&mut app.agent_input);
+            let command = sanitize_input(&std::mem::take(&mut app.agent_input));
             app.agent_input_cursor = 0;
             app.mode = Mode::Normal;
             if !command.is_empty() {
@@ -757,8 +764,14 @@ fn handle_insert_mode(app: &mut App, key: KeyEvent) -> Option<Action> {
             None
         }
         KeyCode::Char(c) => {
+            if c.is_control() {
+                return None;
+            }
+            if app.agent_input.len() + c.len_utf8() > MAX_INPUT_LENGTH {
+                return None;
+            }
             app.agent_input.insert(app.agent_input_cursor, c);
-            app.agent_input_cursor += 1;
+            app.agent_input_cursor += c.len_utf8();
             None
         }
         KeyCode::Backspace => {
@@ -793,6 +806,92 @@ fn handle_insert_mode(app: &mut App, key: KeyEvent) -> Option<Action> {
             None
         }
         _ => None,
+    }
+}
+
+/// Strips control characters and trims whitespace from operator input
+/// before it reaches the agent layer.
+fn sanitize_input(raw: &str) -> String {
+    raw.chars()
+        .filter(|c| !c.is_control())
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_strips_control_characters() {
+        assert_eq!(sanitize_input("hello\x00world"), "helloworld");
+        assert_eq!(sanitize_input("buy\t100\n"), "buy100");
+        assert_eq!(sanitize_input("\x1b[31mred\x1b[0m"), "[31mred[0m");
+    }
+
+    #[test]
+    fn sanitize_trims_whitespace() {
+        assert_eq!(sanitize_input("  buy 100  "), "buy 100");
+    }
+
+    #[test]
+    fn sanitize_empty_and_whitespace_only() {
+        assert_eq!(sanitize_input(""), "");
+        assert_eq!(sanitize_input("   "), "");
+        assert_eq!(sanitize_input("\n\t\r"), "");
+    }
+
+    #[test]
+    fn sanitize_preserves_valid_unicode() {
+        assert_eq!(sanitize_input("buy BTC/USD 0.5"), "buy BTC/USD 0.5");
+        assert_eq!(sanitize_input("price ≥ 100"), "price ≥ 100");
+    }
+
+    #[test]
+    fn max_input_length_rejects_at_limit() {
+        let mut app = App::new();
+        app.mode = Mode::Insert;
+        app.focus = Focus::AgentInput;
+
+        // Fill to exactly MAX_INPUT_LENGTH with ASCII chars
+        app.agent_input = "a".repeat(MAX_INPUT_LENGTH);
+        app.agent_input_cursor = MAX_INPUT_LENGTH;
+
+        // One more char should be rejected
+        let key = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
+        let action = handle_insert_mode(&mut app, key);
+        assert!(action.is_none());
+        assert_eq!(app.agent_input.len(), MAX_INPUT_LENGTH);
+    }
+
+    #[test]
+    fn max_input_length_allows_under_limit() {
+        let mut app = App::new();
+        app.mode = Mode::Insert;
+        app.focus = Focus::AgentInput;
+
+        app.agent_input = "a".repeat(MAX_INPUT_LENGTH - 1);
+        app.agent_input_cursor = MAX_INPUT_LENGTH - 1;
+
+        let key = KeyEvent::new(KeyCode::Char('z'), KeyModifiers::NONE);
+        let action = handle_insert_mode(&mut app, key);
+        assert!(action.is_none());
+        assert_eq!(app.agent_input.len(), MAX_INPUT_LENGTH);
+        assert!(app.agent_input.ends_with('z'));
+    }
+
+    #[test]
+    fn control_characters_rejected_during_input() {
+        let mut app = App::new();
+        app.mode = Mode::Insert;
+        app.focus = Focus::AgentInput;
+
+        // Try inserting a null byte
+        let key = KeyEvent::new(KeyCode::Char('\0'), KeyModifiers::NONE);
+        let action = handle_insert_mode(&mut app, key);
+        assert!(action.is_none());
+        assert!(app.agent_input.is_empty());
     }
 }
 
