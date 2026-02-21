@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- replace unbounded channels with bounded channels (6a5550e)
 - Improve type safety and API ergonomics (1d152f4)
 - Adjust project structure for easier readability (fded012)
 - Change native TLS for a TLS certificate and reduce token log (7068c06)
