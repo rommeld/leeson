@@ -114,14 +114,22 @@ fn render_ticker_header(frame: &mut Frame, area: Rect, app: &App, symbol: &str) 
 /// Renders the order book with history.
 fn render_orderbook(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
     let is_focused = app.focus == Focus::OrderBook;
-    let border_style = if is_focused {
+    let is_stale = app.orderbooks.get(symbol).is_some_and(|ob| ob.is_stale);
+    let title = if is_stale {
+        " Order Book [STALE] "
+    } else {
+        " Order Book "
+    };
+    let border_style = if is_stale {
+        Style::default().fg(Color::Yellow)
+    } else if is_focused {
         Style::default().fg(Color::Cyan)
     } else {
         Style::default().fg(Color::DarkGray)
     };
 
     let block = Block::default()
-        .title(" Order Book ")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(border_style);
 
