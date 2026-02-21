@@ -1,0 +1,336 @@
+Implement the following plan:
+
+# Plan: Order Validation & Risk Guard
+
+## Context
+
+Orders can currently flow from agents to the exchange without any size, value, or rate checks. A single misconfigured agent could submit unbounded trades. This plan adds a validation layer (`RiskGuard`) between order creation and WebSocket submission that enforces configurable per-symbol limits, rejects invalid quantities, tracks trade frequency, and requires operator confirmation for high-value orders. Limits are communicated to agents via a system prompt so they self-regulate, while the Rust side provides hard enforcement as a safety net.
+
+## New Dependency
+
+None. Config uses JSON (`serde_json` already present).
+
+## Config File: `risk.json`
+
+```json
+{
+  "defaults": {
+    "max_order_qty": "1.0",
+    "max_notional_value": "100000",
+    "confirm_above_notional": "50000",
+    "max_trades_per_day": 50,
+    "max_trades_per_week": 200,
+    "max_trades_per_month": 500
+  },
+  "symbols": {
+    "BTC/USD": {
+      "max_order_qty": "0.5",
+      "max_notional_value": "50000",
+      "confirm_above_notional": "25000"
+    },
+    "ETH/USD": {
+      "max_order_qty": "10.0"
+    }
+  }
+}
+```
+
+Per-symbol entries override the defaults. Missing fields inherit from `defaults`.
+
+## Files to Create
+
+### 1. `src/risk/config.rs` — Configuration types and loading
+
+```rust
+use std::collections::HashMap;
+use std::path::Path;
+use rust_decimal::Decimal;
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RiskConfig {
+    pub defaults: SymbolLimits,
+    #[serde(default)]
+    pub symbols: HashMap<String, SymbolOverrides>,
+}
+
+/// Complete set of limits (used as global defaults). All fields required.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SymbolLimits {
+    pub max_order_qty: Decimal,
+    pub max_notional_value: Decimal,
+    pub confirm_above_notional: Decimal,
+    pub max_trades_per_day: u32,
+    pub max_trades_per_week: u32,
+    pub max_trades_per_month: u32,
+}
+
+/// Per-symbol overrides. Every field optional; missing inherits from defaults.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct SymbolOverrides {
+    pub max_order_qty: Option<Decimal>,
+    pub max_notional_value: Option<Decimal>,
+    pub confirm_above_notional: Option<Decimal>,
+    pub max_trades_per_day: Option<u32>,
+    pub max_trades_per_week: Option<u32>,
+    pub max_trades_per_month: Option<u32>,
+}
+
+impl RiskConfig {
+    pub fn load(path: &Path) -> crate::Result<Self> { /* read file, serde_json::from_str */ }
+    pub fn limits_for(&self, symbol: &str) -> SymbolLimits { /* merge override with defaults */ }
+    pub fn describe_limits(&self) -> String { /* human-readable text for agent system prompt */ }
+}
+```
+
+**Tests:** parse valid JSON, verify merging, unknown symbol gets defaults, bad JSON returns error, describe_limits output.
+
+### 2. `src/risk/mod.rs` — Core risk guard
+
+```rust
+pub mod config;
+
+use std::collections::HashMap;
+use std::time::Instant;
+use rust_decimal::Decimal;
+use crate::models::add_order::AddOrderParams;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RiskVerdict {
+    Approved,
+    RequiresConfirmation { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RiskCheckError {
+    NonPositiveQuantity { qty: Decimal },
+    QuantityExceeded { qty: Decimal, max: Decimal, symbol: String },
+    NotionalExceeded { notional: Decimal, max: Decimal, symbol: String },
+    RateLimitExceeded { symbol: String, period: String, count: u32, max: u32 },
+}
+// impl Display and Error manually (follows existing pattern in add_order.rs)
+
+pub struct RiskGuard {
+    config: RiskConfig,
+    tracker: RateTracker,  // HashMap<String, Vec<Instant>> — per-symbol order timestamps
+}
+
+impl RiskGuard {
+    pub fn new(config: RiskConfig) -> Self;
+    pub fn config(&self) -> &RiskConfig;
+
+    /// Validates order against all limits. Does NOT record submission.
+    pub fn check_order(&self, params: &AddOrderParams) -> Result<RiskVerdict, RiskCheckError>;
+
+    /// Records a successful submission for rate limiting.
+    pub fn record_submission(&mut self, symbol: &str);
+
+    /// Prunes entries older than 30 days. Call periodically.
+    pub fn prune_stale_entries(&mut self);
+}
+```
+
+**Validation sequence in `check_order`:**
+1. Reject `qty <= 0` → `NonPositiveQuantity`
+2. Reject `qty > max_order_qty` → `QuantityExceeded`
+3. If `limit_price` present: reject `qty * price > max_notional_value` → `NotionalExceeded`
+4. Check rate limits (day/week/month) → `RateLimitExceeded`
+5. If `limit_price` present and `qty * price > confirm_above_notional` → `RequiresConfirmation`
+6. Otherwise → `Approved`
+
+Market orders (no `limit_price`) skip notional checks entirely — price is unknown at submission time.
+
+**`RateTracker`** is a private struct: `HashMap<String, Vec<Instant>>`. `count_within(symbol, duration)` counts entries within a time window. Simple and bounded (prune monthly).
+
+**Tests:** reject zero qty, reject negative qty, reject over-max qty, reject over-max notional, confirm above threshold, approve valid order, rate limit after N submissions, market orders skip notional, prune doesn't panic on empty.
+
+## Files to Modify
+
+### 3. `src/lib.rs` — Register risk module
+
+Add `pub mod risk;` after the existing module declarations.
+
+### 4. `src/tui/app.rs` — Add pending order state
+
+```rust
+use crate::models::add_order::AddOrderParams;
+
+pub struct App {
+    // ... existing fields ...
+    /// Order pending operator confirmation.
+    pub pending_order: Option<PendingOrder>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PendingOrder {
+    pub params: AddOrderParams,
+    pub reason: String,
+}
+```
+
+Initialize `pending_order: None` in `App::new()`.
+
+### 5. `src/tui/event.rs` — Extend Action enum and agent message handling
+
+**Action changes:**
+```rust
+pub enum Action {
+    // ... existing ...
+    SubmitOrder(AddOrderParams),  // rename PlaceOrder, now carries params
+    ConfirmOrder,                 // operator confirmed pending order
+    CancelOrder(String),
+}
+```
+
+**New Message variant:**
+```rust
+pub enum Message {
+    // ... existing ...
+    AgentOrderRequest {
+        agent_index: usize,
+        symbol: String,
+        side: String,
+        order_type: String,
+        qty: String,
+        price: Option<String>,
+    },
+}
+```
+
+**Handle `AgentOrderRequest` in `update()`:** Parse fields into `AddOrderParams` via `AddOrderBuilder`, emit `Action::SubmitOrder(params)`. On parse failure, add error to agent output.
+
+**Fix `handle_confirm_mode`:** On 'y'/Enter → return `Some(Action::ConfirmOrder)`. On 'n'/Esc → clear `app.pending_order`, return `None`.
+
+### 6. `src/agent.rs` — Extend agent protocol
+
+**AgentToTui** — add `PlaceOrder` variant:
+```rust
+enum AgentToTui {
+    // ... existing ...
+    PlaceOrder {
+        symbol: String,
+        side: String,         // "buy" or "sell"
+        order_type: String,   // "market" or "limit"
+        qty: String,
+        #[serde(default)]
+        price: Option<String>,
+    },
+}
+```
+
+**TuiToAgent** — add `RiskLimits` variant:
+```rust
+enum TuiToAgent {
+    // ... existing ...
+    RiskLimits { description: String },
+    OrderResult { success: bool, message: String },
+}
+```
+
+**AgentCommand** — add variants:
+```rust
+pub enum AgentCommand {
+    // ... existing ...
+    RiskLimits(String),
+    OrderResult { success: bool, message: String },
+}
+```
+
+**`spawn_stdout_reader`** — handle `AgentToTui::PlaceOrder` → send `Message::AgentOrderRequest`.
+
+**`spawn_stdin_writer`** — handle new `AgentCommand` variants → serialize to `TuiToAgent`.
+
+### 7. `src/main.rs` — Wire everything together
+
+**At startup (after `fetch_config`):**
+```rust
+let risk_config = RiskConfig::load(Path::new("risk.json"))?;
+let mut risk_guard = RiskGuard::new(risk_config);
+```
+
+If `risk.json` doesn't exist, treat as a hard error (all orders blocked without limits). This is intentional — running without risk limits should be an explicit choice, not an accident.
+
+**After agent ready, send limits:**
+```rust
+Message::AgentReady(agent_index) => {
+    app.add_agent_output(agent_index, "[agent ready]".to_string());
+    if let Some(ref handle) = agents[agent_index] {
+        let desc = risk_guard.config().describe_limits();
+        let _ = handle.commands.send(AgentCommand::RiskLimits(desc));
+    }
+}
+```
+
+Move `AgentReady` handling from `event.rs::update()` to `main.rs` so it has access to `risk_guard`.
+
+**Action handlers:**
+```rust
+Action::SubmitOrder(params) => {
+    let symbol = params.symbol.clone();
+    match risk_guard.check_order(&params) {
+        Ok(RiskVerdict::Approved) => {
+            // Build request and submit via WebSocket
+            let request = AddOrderRequest::new(params, None);
+            let mut ws = writer.lock().await;
+            if let Some(ref mut w) = *ws {
+                let _ = add_order(w, request).await;
+                risk_guard.record_submission(&symbol);
+            }
+        }
+        Ok(RiskVerdict::RequiresConfirmation { reason }) => {
+            app.pending_order = Some(PendingOrder { params, reason: reason.clone() });
+            app.mode = Mode::Confirm;
+            tracing::info!(%reason, "order requires confirmation");
+        }
+        Err(e) => {
+            app.show_error(format!("Order rejected: {e}"));
+            tracing::warn!(%e, "order rejected by risk guard");
+        }
+    }
+}
+Action::ConfirmOrder => {
+    if let Some(pending) = app.pending_order.take() {
+        let symbol = pending.params.symbol.clone();
+        let request = AddOrderRequest::new(pending.params, None);
+        let mut ws = writer.lock().await;
+        if let Some(ref mut w) = *ws {
+            let _ = add_order(w, request).await;
+            risk_guard.record_submission(&symbol);
+        }
+    }
+}
+```
+
+### 8. `src/tui/ui.rs` — Render confirmation overlay
+
+After the main tab render, if `app.mode == Mode::Confirm && app.pending_order.is_some()`, render a centered overlay block showing the order details and reason, with `[Y] Confirm [N] Cancel` keybindings. Use `Clear` widget + `Block` with yellow border, following the same pattern as `error_message` display.
+
+## Implementation Order
+
+Each step should compile and pass clippy before proceeding:
+
+1. Create `src/risk/config.rs` + `src/risk/mod.rs` + register in `src/lib.rs` — pure library code with tests
+2. Create `risk.json` at project root with sensible defaults
+3. Add `PendingOrder` and `pending_order` field to `App` in `src/tui/app.rs`
+4. Extend `Action` enum and add `AgentOrderRequest` message in `src/tui/event.rs`, update `handle_confirm_mode`
+5. Extend agent protocol in `src/agent.rs` (new variants on all three enums + reader/writer handling)
+6. Wire into `src/main.rs` — load config, create guard, handle `SubmitOrder`/`ConfirmOrder`, send limits on agent ready
+7. Add confirmation overlay in `src/tui/ui.rs`
+
+## What NOT to Change
+
+- `src/models/add_order.rs` — existing builder validation stays as-is; risk guard is an additional layer on top
+- `src/websocket/trading.rs` — WebSocket functions remain unchanged
+- No new dependencies needed
+
+## Verification
+
+1. `cargo check` — compiles
+2. `cargo clippy` — no warnings
+3. `cargo test` — all new risk module tests pass, existing tests unaffected
+4. Manual: `cargo run` with `risk.json`, subscribe to a pair, verify limits are logged and sent to agent
+5. Test rejection: temporarily set `max_order_qty` to `"0.001"` and observe rejection in TUI error bar
+6. Test confirmation: set `confirm_above_notional` low and verify the TUI shows confirmation dialog
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/denny/.REDACTED.jsonl

@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "cfbc33ce03b4",
+  "strategy": "auto-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "risk.json",
+    "src/agent.rs",
+    "src/lib.rs",
+    "src/main.rs",
+    "src/risk/config.rs",
+    "src/risk/mod.rs",
+    "src/tui/app.rs",
+    "src/tui/event.rs",
+    "src/tui/ui.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/cf/bc33ce03b4/0/metadata.json",
+      "transcript": "/cf/bc33ce03b4/0/full.jsonl",
+      "context": "",
+      "content_hash": "/cf/bc33ce03b4/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 276,
+    "cache_creation_tokens": 92934,
+    "cache_read_tokens": 5162699,
+    "output_tokens": 4521,
+    "api_call_count": 63
+  }
+}

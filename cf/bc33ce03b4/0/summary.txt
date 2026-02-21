@@ -1,0 +1,30 @@
+All done. Here's a summary of what was implemented:
+
+## Files Created
+
+- **`src/risk/config.rs`** — `RiskConfig`, `SymbolLimits`, `SymbolOverrides` types with JSON deserialization, per-symbol override merging, and `describe_limits()` for agent system prompts. 8 tests.
+
+- **`src/risk/mod.rs`** — `RiskGuard` with `check_order()` and `record_submission()`. Validates: non-positive qty, max qty, max notional value (limit orders only), daily/weekly/monthly rate limits, and confirmation threshold. Includes `RiskVerdict` (Approved / RequiresConfirmation), `RiskCheckError` enum, and private `RateTracker`. 11 tests.
+
+- **`risk.json`** — Default risk limits config with BTC/USD and ETH/USD overrides.
+
+## Files Modified
+
+- **`src/lib.rs`** — Added `pub mod risk;`
+
+- **`src/tui/app.rs`** — Added `PendingOrder` struct and `pending_order: Option<PendingOrder>` field to `App`
+
+- **`src/tui/event.rs`** — Renamed `Action::PlaceOrder` to `Action::SubmitOrder(Box<AddOrderParams>)`, added `Action::ConfirmOrder`, added `Message::AgentOrderRequest` variant with parsing logic (market/limit orders from agent JSON), updated `handle_confirm_mode` to return `ConfirmOrder` and clear `pending_order` on cancel
+
+- **`src/agent.rs`** — Added `PlaceOrder` variant to `AgentToTui`, added `RiskLimits`/`OrderResult` to `TuiToAgent`, added `RiskLimits(String)`/`OrderResult` to `AgentCommand`, updated `spawn_stdout_reader` and `spawn_stdin_writer` to handle new variants
+
+- **`src/main.rs`** — Loads `risk.json` at startup (hard error if missing), creates `RiskGuard`, intercepts `AgentReady` to send risk limits, handles `SubmitOrder` (check → approve/confirm/reject), handles `ConfirmOrder` (submit pending order)
+
+- **`src/tui/ui.rs`** — Added centered confirmation overlay dialog with yellow border, order details, reason, and [Y]/[N] keybindings
+
+## Verification
+
+- `cargo check` — compiles clean
+- `cargo clippy` — zero warnings
+- `cargo fmt --check` — formatted
+- `cargo test` — all 19 new risk tests pass; only pre-existing config env var test failures remain
