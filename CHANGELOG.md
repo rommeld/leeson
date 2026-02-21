@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- serialize config tests with mutex to prevent env var races (a91c043)
 - track pinned TLS certificate in git for CI builds (6e6fbd2)
 - Validate HTTP response status before parsing token body (7ecbd4b)
 - Return proper error instead of panicking on log file creation failure (8ecf3a2)
