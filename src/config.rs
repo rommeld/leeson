@@ -34,8 +34,8 @@ pub struct KrakenConfig {
 /// Returns [`LeesonError::Config`](crate::LeesonError::Config) if only
 /// one of the two credential variables is set.
 pub fn fetch_config() -> crate::Result<AppConfig> {
-    let websocket_url = non_empty_var("KRAKEN_WEBSOCKET_URL")
-        .unwrap_or_else(|| DEFAULT_WEBSOCKET_URL.to_string());
+    let websocket_url =
+        non_empty_var("KRAKEN_WEBSOCKET_URL").unwrap_or_else(|| DEFAULT_WEBSOCKET_URL.to_string());
 
     let api_key = non_empty_var("KRAKEN_API_KEY");
     let api_secret = non_empty_var("KRAKEN_API_SECRET");
@@ -71,21 +71,27 @@ fn non_empty_var(name: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Mutex to serialize tests that mutate environment variables.
+    /// Rust runs tests in parallel, so without this lock the `with_env`
+    /// helper races across threads.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     /// Helper that temporarily sets env vars, runs `f`, then restores originals.
     ///
-    /// # Safety
-    ///
-    /// Tests using this helper must run with `--test-threads=1` or otherwise
-    /// ensure no other threads read these env vars concurrently.
+    /// Acquires `ENV_LOCK` to prevent concurrent env var mutations.
     fn with_env<F: FnOnce()>(vars: &[(&str, Option<&str>)], f: F) {
+        let _guard = ENV_LOCK.lock().expect("env lock poisoned");
+
         let originals: Vec<(&str, Option<String>)> = vars
             .iter()
             .map(|(k, _)| (*k, std::env::var(k).ok()))
             .collect();
 
         for (k, v) in vars {
-            // SAFETY: config tests run single-threaded (see test runner config).
+            // SAFETY: serialized by ENV_LOCK — no other test thread touches
+            // these env vars while this guard is held.
             unsafe {
                 match v {
                     Some(val) => std::env::set_var(k, val),
@@ -97,7 +103,7 @@ mod tests {
         f();
 
         for (k, original) in originals {
-            // SAFETY: restoring original values, same single-threaded context.
+            // SAFETY: restoring original values, same serialized context.
             unsafe {
                 match original {
                     Some(val) => std::env::set_var(k, val),
