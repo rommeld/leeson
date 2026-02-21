@@ -1,0 +1,1 @@
+Done. Removed the file logging setup (`std::fs::File::create("leeson.log")` + `tracing_subscriber` init) from `src/main.rs`. No imports needed cleaning up — `tracing_subscriber` wasn't explicitly imported in this file.
