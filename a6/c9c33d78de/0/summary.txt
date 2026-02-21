@@ -1,0 +1,17 @@
+Here's a summary of everything implemented:
+
+### New files
+- **`src/agent.rs`** — Agent process manager with `AgentCommand`, `AgentHandle`, JSON-lines wire protocol types, and `spawn_agent()` that creates three tokio tasks (stdout reader, stderr reader, stdin writer)
+- **`agents/leeson_agent.py`** — Python base class with `output()`, `error()`, `ready()`, `on_message()`, `on_shutdown()`, and `run()` loop (stdlib only)
+- **`agents/agent1.py`** — Echo agent for testing the round-trip
+
+### Modified files
+- **`src/lib.rs`** — Added `pub mod agent`
+- **`src/tui/event.rs`** — Added `AgentOutput`, `AgentReady`, `AgentExited` message variants and their handlers in `update()`
+- **`src/main.rs`** — Spawns Agent 1 on startup, forwards `SendToAgent1` to the agent's command channel, sends `Shutdown` to all agents before terminal restore
+
+### Verification
+- `cargo check` — compiles cleanly
+- `cargo clippy` — zero warnings
+- `cargo test` — all 86 tests pass
+- Python echo agent round-trip tested: stdin JSON → `ready` + `Echo: hello world` on stdout
