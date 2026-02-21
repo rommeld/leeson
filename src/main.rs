@@ -21,15 +21,6 @@ use leeson::websocket::{
 
 #[tokio::main]
 async fn main() -> Result<(), LeesonError> {
-    // Set up file logging (logs to leeson.log)
-    let file = std::fs::File::create("leeson.log")
-        .map_err(|e| LeesonError::Io(format!("failed to create log file: {e}")))?;
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::DEBUG)
-        .with_writer(file)
-        .with_ansi(false)
-        .init();
-
     let app_config = fetch_config()?;
     let tls_config = Arc::new(build_tls_config()?);
 
