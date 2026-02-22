@@ -8,6 +8,7 @@ through the same approval flow as the Market Agent.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime
 
 import httpx
@@ -42,7 +43,8 @@ ideation_agent = Agent(
         "- Volume analysis and divergence detection\n"
         "- Multi-timeframe confluence\n\n"
         "Your role:\n"
-        "- Analyze OHLC candlestick data using the get_ohlc tool\n"
+        "- Analyze the OHLC candlestick data provided in each prompt\n"
+        "- Use the get_ohlc tool for additional timeframes if deeper analysis is needed\n"
         "- Identify high-probability setups based on chart patterns and trends\n"
         "- Send trade ideas to Risk Agent using the send_trade_idea tool\n"
         "- Focus on swing/position trades (hours to days), not scalping\n\n"
@@ -71,17 +73,15 @@ async def dynamic_context(ctx: RunContext[AgentDeps]) -> str:
     return "\n".join(parts) if parts else "No open positions."
 
 
-@ideation_agent.tool
-async def get_ohlc(
-    ctx: RunContext[AgentDeps],
-    symbol: str,
-    interval: int = 60,
-) -> str:
-    """Fetch OHLC candlestick data from Kraken for technical analysis.
+async def fetch_ohlc(symbol: str, interval: int = 60) -> str:
+    """Fetch and format OHLC candlestick data from Kraken.
+
+    Standalone function that can be called both programmatically (for
+    pre-fetching) and from the LLM tool.
 
     Args:
         symbol: Trading pair (e.g. "BTC/USD").
-        interval: Candle interval in minutes. Valid: 1, 5, 15, 30, 60, 240, 1440, 10080, 21600.
+        interval: Candle interval in minutes.
     """
     if interval not in _VALID_INTERVALS:
         return (
@@ -153,6 +153,24 @@ async def get_ohlc(
 
 
 @ideation_agent.tool
+async def get_ohlc(
+    ctx: RunContext[AgentDeps],
+    symbol: str,
+    interval: int = 60,
+) -> str:
+    """Fetch OHLC candlestick data from Kraken for technical analysis.
+
+    Use this tool to fetch additional timeframes beyond the hourly data
+    already provided in the prompt.
+
+    Args:
+        symbol: Trading pair (e.g. "BTC/USD").
+        interval: Candle interval in minutes. Valid: 1, 5, 15, 30, 60, 240, 1440, 10080, 21600.
+    """
+    return await fetch_ohlc(symbol, interval)
+
+
+@ideation_agent.tool
 async def send_trade_idea(
     ctx: RunContext[AgentDeps],
     symbol: str,
@@ -199,14 +217,30 @@ async def run_periodic(
     if not pairs:
         return history
 
-    pair_list = ", ".join(pairs)
+    # Pre-fetch hourly OHLC data for all active pairs concurrently.
+    ohlc_results = await asyncio.gather(
+        *(fetch_ohlc(pair) for pair in pairs),
+        return_exceptions=True,
+    )
+
+    ohlc_sections: list[str] = []
+    for pair, result in zip(pairs, ohlc_results):
+        if isinstance(result, Exception):
+            ohlc_sections.append(f"--- {pair} ---\nFetch error: {result}")
+        else:
+            ohlc_sections.append(f"--- {pair} ---\n{result}")
+
+    ohlc_block = "\n\n".join(ohlc_sections)
+
     prompt = (
-        f"Analyze the following active pairs for swing trade opportunities: {pair_list}. "
-        f"For each pair, use the get_ohlc tool to fetch hourly candle data, then "
-        f"assess trend direction, key support/resistance levels, and any notable "
-        f"candlestick patterns. If you identify a high-probability setup, use "
-        f"send_trade_idea to propose it. If no clear opportunity exists, briefly "
-        f"summarize the market structure."
+        f"Analyze the following active pairs for swing trade opportunities.\n\n"
+        f"Hourly OHLC data has already been fetched for each pair:\n\n"
+        f"{ohlc_block}\n\n"
+        f"For each pair, assess trend direction, key support/resistance levels, "
+        f"and any notable candlestick patterns. If you identify a high-probability "
+        f"setup, use send_trade_idea to propose it. If no clear opportunity exists, "
+        f"briefly summarize the market structure. You can use the get_ohlc tool to "
+        f"fetch additional timeframes (e.g. 15-min, daily) if deeper analysis is needed."
     )
 
     result = await ideation_agent.run(
