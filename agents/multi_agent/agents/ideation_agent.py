@@ -16,6 +16,7 @@ from pydantic_ai import Agent, RunContext
 
 from multi_agent.bridge import output_to_panel
 from multi_agent.models import AgentDeps, AgentRole, TradeIdea, record_usage
+from multi_agent.technical import compute_all, find_key_levels, parse_candles
 
 PANEL = 1
 
@@ -28,60 +29,17 @@ def _ws_pair_to_rest(symbol: str) -> str:
     return symbol.replace("/", "")
 
 
-ideation_agent = Agent(
-    model=None,
-    defer_model_check=True,
-    deps_type=AgentDeps,
-    system_prompt=(
-        "You are the Ideation Agent for the Leeson crypto trading system. "
-        "You are an experienced technical analyst focused on multi-hour and "
-        "daily chart patterns.\n\n"
-        "Your expertise:\n"
-        "- Trend identification (higher highs/lows, moving average crossovers)\n"
-        "- Support and resistance level detection\n"
-        "- Candlestick pattern recognition (engulfing, doji, hammer, etc.)\n"
-        "- Volume analysis and divergence detection\n"
-        "- Multi-timeframe confluence\n\n"
-        "Your role:\n"
-        "- Analyze the OHLC candlestick data provided in each prompt\n"
-        "- Use the get_ohlc tool for additional timeframes if deeper analysis is needed\n"
-        "- Identify high-probability setups based on chart patterns and trends\n"
-        "- Send trade ideas to Risk Agent using the send_trade_idea tool\n"
-        "- Focus on swing/position trades (hours to days), not scalping\n\n"
-        "You complement the Market Agent who focuses on real-time price action "
-        "and microstructure. You focus on the bigger picture — trend direction, "
-        "key levels, and pattern-based entries.\n\n"
-        "Be concise. Only propose trades with clear technical justification "
-        "and calibrated probability scores."
-    ),
-)
+# ---------------------------------------------------------------------------
+# OHLC fetch / format helpers
+# ---------------------------------------------------------------------------
 
 
-@ideation_agent.instructions
-async def dynamic_context(ctx: RunContext[AgentDeps]) -> str:
-    """Inject current position info for context."""
-    state = ctx.deps.state
-    parts = []
-    if state.positions:
-        parts.append("Open positions:")
-        for p in state.positions.values():
-            parts.append(
-                f"  {p.symbol} {p.side} qty={p.qty} "
-                f"entry={p.entry_price} current={p.current_price} "
-                f"pnl={p.unrealized_pnl}"
-            )
-    return "\n".join(parts) if parts else "No open positions."
+async def _fetch_raw_ohlc(
+    symbol: str, interval: int = 60
+) -> list[list] | str:
+    """Fetch raw OHLC candle arrays from Kraken.
 
-
-async def fetch_ohlc(symbol: str, interval: int = 60) -> str:
-    """Fetch and format OHLC candlestick data from Kraken.
-
-    Standalone function that can be called both programmatically (for
-    pre-fetching) and from the LLM tool.
-
-    Args:
-        symbol: Trading pair (e.g. "BTC/USD").
-        interval: Candle interval in minutes.
+    Returns the raw list of candle arrays on success, or an error string.
     """
     if interval not in _VALID_INTERVALS:
         return (
@@ -109,21 +67,18 @@ async def fetch_ohlc(symbol: str, interval: int = 60) -> str:
         return f"Kraken API error: {', '.join(errors)}"
 
     result = data.get("result", {})
-    # The result contains the pair data under a Kraken-specific key
-    # and a "last" timestamp — find the candle array
-    candles = None
     for key, value in result.items():
         if key != "last" and isinstance(value, list):
-            candles = value
-            break
+            return value
 
-    if not candles:
-        return f"No OHLC data returned for {symbol}"
+    return f"No OHLC data returned for {symbol}"
 
-    total = len(candles)
-    recent = candles[-24:] if len(candles) >= 24 else candles
 
-    # Each candle: [time, open, high, low, close, vwap, volume, count]
+def _format_ohlc(symbol: str, raw_candles: list[list], interval: int = 60) -> str:
+    """Format raw candle arrays into the 24-candle summary table."""
+    total = len(raw_candles)
+    recent = raw_candles[-24:] if total >= 24 else raw_candles
+
     first_close = float(recent[0][4])
     last_close = float(recent[-1][4])
     period_high = max(float(c[2]) for c in recent)
@@ -152,6 +107,83 @@ async def fetch_ohlc(symbol: str, interval: int = 60) -> str:
     return "\n".join(lines)
 
 
+async def fetch_ohlc(symbol: str, interval: int = 60) -> str:
+    """Fetch and format OHLC candlestick data from Kraken.
+
+    Standalone function that can be called both programmatically (for
+    pre-fetching) and from the LLM tool.
+    """
+    raw = await _fetch_raw_ohlc(symbol, interval)
+    if isinstance(raw, str):
+        return raw
+    return _format_ohlc(symbol, raw, interval)
+
+
+# ---------------------------------------------------------------------------
+# Agent definition
+# ---------------------------------------------------------------------------
+
+ideation_agent = Agent(
+    model=None,
+    defer_model_check=True,
+    deps_type=AgentDeps,
+    system_prompt=(
+        "You are the Ideation Agent for the Leeson crypto trading system. "
+        "You are an experienced quantitative technical analyst focused on "
+        "multi-hour and daily chart patterns.\n\n"
+        "Your expertise:\n"
+        "- Trend identification via EMA crossovers and price momentum\n"
+        "- RSI divergence and overbought/oversold conditions\n"
+        "- MACD signal line crossovers and histogram momentum\n"
+        "- Bollinger Band squeeze and breakout detection\n"
+        "- ATR-based volatility assessment for position sizing\n"
+        "- Support and resistance level detection from swing highs/lows\n"
+        "- Candlestick pattern recognition (engulfing, doji, hammer, etc.)\n"
+        "- Volume analysis and divergence detection\n"
+        "- Multi-timeframe confluence\n\n"
+        "Your role:\n"
+        "- Analyze the OHLC data and computed technical indicators provided "
+        "in each prompt\n"
+        "- Use the calculate_indicators tool for additional timeframes\n"
+        "- Use the find_support_resistance tool for longer-timeframe levels "
+        "(e.g. 240min, 1440min)\n"
+        "- Use the get_ohlc tool for raw candle data when deeper visual "
+        "analysis is needed\n"
+        "- Require at least 2-3 confirming indicators before proposing a "
+        "trade (e.g. RSI + MACD alignment, or EMA crossover + Bollinger "
+        "breakout)\n"
+        "- Send trade ideas to Risk Agent using the send_trade_idea tool\n"
+        "- Focus on swing/position trades (hours to days), not scalping\n\n"
+        "You complement the Market Agent who focuses on real-time price "
+        "action and microstructure. You focus on the bigger picture — trend "
+        "direction, key levels, and indicator-confirmed entries.\n\n"
+        "Be concise. Only propose trades with clear technical justification, "
+        "multiple confirming indicators, and calibrated probability scores."
+    ),
+)
+
+
+@ideation_agent.instructions
+async def dynamic_context(ctx: RunContext[AgentDeps]) -> str:
+    """Inject current position info for context."""
+    state = ctx.deps.state
+    parts = []
+    if state.positions:
+        parts.append("Open positions:")
+        for p in state.positions.values():
+            parts.append(
+                f"  {p.symbol} {p.side} qty={p.qty} "
+                f"entry={p.entry_price} current={p.current_price} "
+                f"pnl={p.unrealized_pnl}"
+            )
+    return "\n".join(parts) if parts else "No open positions."
+
+
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+
+
 @ideation_agent.tool
 async def get_ohlc(
     ctx: RunContext[AgentDeps],
@@ -168,6 +200,62 @@ async def get_ohlc(
         interval: Candle interval in minutes. Valid: 1, 5, 15, 30, 60, 240, 1440, 10080, 21600.
     """
     return await fetch_ohlc(symbol, interval)
+
+
+@ideation_agent.tool
+async def calculate_indicators(
+    ctx: RunContext[AgentDeps],
+    symbol: str,
+    interval: int = 60,
+) -> str:
+    """Calculate technical indicators (RSI, MACD, EMAs, Bollinger, ATR) for a pair.
+
+    Uses all available candles (up to 720) for accurate indicator
+    calculation. Use this for timeframes not already in the prompt.
+
+    Args:
+        symbol: Trading pair (e.g. "BTC/USD").
+        interval: Candle interval in minutes. Valid: 1, 5, 15, 30, 60, 240, 1440, 10080, 21600.
+    """
+    raw = await _fetch_raw_ohlc(symbol, interval)
+    if isinstance(raw, str):
+        return raw
+    candles = parse_candles(raw)
+    return compute_all(candles, interval)
+
+
+@ideation_agent.tool
+async def find_support_resistance_tool(
+    ctx: RunContext[AgentDeps],
+    symbol: str,
+    interval: int = 60,
+) -> str:
+    """Find key support and resistance levels for a trading pair.
+
+    Useful for longer timeframes (240min, 1440min) to identify more
+    significant levels.
+
+    Args:
+        symbol: Trading pair (e.g. "BTC/USD").
+        interval: Candle interval in minutes. Valid: 1, 5, 15, 30, 60, 240, 1440, 10080, 21600.
+    """
+    raw = await _fetch_raw_ohlc(symbol, interval)
+    if isinstance(raw, str):
+        return raw
+
+    candles = parse_candles(raw)
+    current = candles[-1].close
+    levels = find_key_levels(candles)
+
+    r_str = " | ".join(f"{lv:,.1f}" for lv in sorted(levels["resistance"])) or "none detected"
+    s_str = " | ".join(f"{lv:,.1f}" for lv in sorted(levels["support"])) or "none detected"
+
+    return (
+        f"Key levels for {symbol} ({interval}min, {len(candles)} candles)\n"
+        f"Current price: {current:,.1f}\n"
+        f"Resistance: {r_str}\n"
+        f"Support: {s_str}"
+    )
 
 
 @ideation_agent.tool
@@ -209,6 +297,17 @@ async def send_trade_idea(
     return f"Trade idea sent to Risk Agent: {symbol} {side}"
 
 
+# ---------------------------------------------------------------------------
+# Periodic run
+# ---------------------------------------------------------------------------
+
+
+async def _fetch_pair_data(pair: str) -> tuple[str, list[list] | str]:
+    """Fetch raw OHLC for a single pair, returning (pair, raw_or_error)."""
+    raw = await _fetch_raw_ohlc(pair)
+    return pair, raw
+
+
 async def run_periodic(
     deps: AgentDeps, history: list, *, model: object
 ) -> list:
@@ -218,29 +317,44 @@ async def run_periodic(
         return history
 
     # Pre-fetch hourly OHLC data for all active pairs concurrently.
-    ohlc_results = await asyncio.gather(
-        *(fetch_ohlc(pair) for pair in pairs),
+    results = await asyncio.gather(
+        *(_fetch_pair_data(pair) for pair in pairs),
         return_exceptions=True,
     )
 
     ohlc_sections: list[str] = []
-    for pair, result in zip(pairs, ohlc_results):
+    for result in results:
         if isinstance(result, Exception):
-            ohlc_sections.append(f"--- {pair} ---\nFetch error: {result}")
-        else:
-            ohlc_sections.append(f"--- {pair} ---\n{result}")
+            ohlc_sections.append(f"Fetch error: {result}")
+            continue
+
+        pair, raw = result
+        if isinstance(raw, str):
+            ohlc_sections.append(f"--- {pair} ---\n{raw}")
+            continue
+
+        # Format both the 24-candle table and computed indicators
+        table = _format_ohlc(pair, raw)
+        candles = parse_candles(raw)
+        indicators = compute_all(candles)
+        ohlc_sections.append(f"--- {pair} ---\n{table}\n\n{indicators}")
 
     ohlc_block = "\n\n".join(ohlc_sections)
 
     prompt = (
         f"Analyze the following active pairs for swing trade opportunities.\n\n"
-        f"Hourly OHLC data has already been fetched for each pair:\n\n"
+        f"Hourly OHLC data and computed technical indicators for each pair:\n\n"
         f"{ohlc_block}\n\n"
-        f"For each pair, assess trend direction, key support/resistance levels, "
-        f"and any notable candlestick patterns. If you identify a high-probability "
-        f"setup, use send_trade_idea to propose it. If no clear opportunity exists, "
-        f"briefly summarize the market structure. You can use the get_ohlc tool to "
-        f"fetch additional timeframes (e.g. 15-min, daily) if deeper analysis is needed."
+        f"For each pair, assess:\n"
+        f"1. Trend direction (EMA alignment, momentum)\n"
+        f"2. Momentum conditions (RSI, MACD histogram direction)\n"
+        f"3. Volatility context (Bollinger position, ATR)\n"
+        f"4. Key support/resistance levels\n"
+        f"5. Volume confirmation\n\n"
+        f"Only propose a trade if 2-3 indicators confirm the setup. Use "
+        f"send_trade_idea to propose trades. You can use calculate_indicators "
+        f"or find_support_resistance for additional timeframes if you need "
+        f"multi-timeframe confluence."
     )
 
     result = await ideation_agent.run(
