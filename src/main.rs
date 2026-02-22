@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 use leeson::LeesonError;
-use leeson::agent::{AgentCommand, AgentHandle, spawn_agent};
+use leeson::agent::{AgentCommand, AgentHandle, spawn_multi_agent};
 use leeson::auth::validate_credentials;
 use leeson::config::fetch_config;
 use leeson::models::Channel;
@@ -105,9 +105,9 @@ async fn main() -> Result<(), LeesonError> {
 
     // Spawn agent subprocesses
     let mut agents: [Option<AgentHandle>; 3] = [None, None, None];
-    match spawn_agent(0, "agents/agent1.py", tx.clone()) {
+    match spawn_multi_agent(0, tx.clone()) {
         Ok(handle) => agents[0] = Some(handle),
-        Err(e) => app.show_error(format!("Failed to spawn Agent 1: {e}")),
+        Err(e) => app.show_error(format!("Failed to spawn multi-agent system: {e}")),
     }
 
     // Per-symbol throttle for ticker updates to agents (max once per 5 seconds)

@@ -120,7 +120,7 @@ pub fn spawn_agent(
     script_path: &str,
     tx: mpsc::Sender<Message>,
 ) -> crate::Result<AgentHandle> {
-    let mut child = Command::new("python3")
+    let child = Command::new("python3")
         .arg(script_path)
         .arg(agent_index.to_string())
         .stdin(std::process::Stdio::piped())
@@ -130,6 +130,38 @@ pub fn spawn_agent(
         .spawn()
         .map_err(|e| crate::LeesonError::Io(format!("failed to spawn agent {agent_index}: {e}")))?;
 
+    wire_agent_io(agent_index, child, tx)
+}
+
+/// Spawns the multi-agent Python module via `uv run` in the agents directory.
+///
+/// Uses `uv run python -m multi_agent` so that the uv-managed virtual
+/// environment and all dependencies are available.
+pub fn spawn_multi_agent(
+    agent_index: usize,
+    tx: mpsc::Sender<Message>,
+) -> crate::Result<AgentHandle> {
+    let child = Command::new("uv")
+        .args(["run", "--directory", "agents", "python", "-m", "multi_agent"])
+        .arg(agent_index.to_string())
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| {
+            crate::LeesonError::Io(format!("failed to spawn multi-agent system: {e}"))
+        })?;
+
+    wire_agent_io(agent_index, child, tx)
+}
+
+/// Wires a child process's stdin/stdout/stderr to the TUI message channel.
+fn wire_agent_io(
+    agent_index: usize,
+    mut child: Child,
+    tx: mpsc::Sender<Message>,
+) -> crate::Result<AgentHandle> {
     let stdout = child
         .stdout
         .take()

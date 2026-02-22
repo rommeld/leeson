@@ -70,7 +70,7 @@ fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &App) {
         ])
         .split(area);
 
-    let titles = [" Agent 1 (Interactive) ", " Agent 2 ", " Agent 3 "];
+    let titles = [" User Agent ", " Market Agent ", " Risk & Execution "];
 
     for (i, col) in columns.iter().enumerate() {
         let focus = match i {
