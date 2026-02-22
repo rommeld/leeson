@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 
 
@@ -49,6 +50,7 @@ class SharedState:
     balances: dict[str, BalanceInfo] = field(default_factory=dict)
     risk_limits: str = ""
     active_pairs: list[str] = field(default_factory=list)
+    pairs_ready: asyncio.Event = field(default_factory=asyncio.Event)
     token_state: str = "unknown"
     shutting_down: bool = False
     # Track last analyzed price per symbol for rate limiting

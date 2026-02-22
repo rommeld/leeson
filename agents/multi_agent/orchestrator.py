@@ -173,6 +173,10 @@ async def _route_stdin_messages(
 
             elif msg_type == "active_pairs":
                 state.active_pairs = msg.get("pairs", [])
+                if state.active_pairs:
+                    state.pairs_ready.set()
+                else:
+                    state.pairs_ready.clear()
                 output_to_panel(
                     0,
                     f"[system] Active pairs: {', '.join(state.active_pairs) or 'none'}",
@@ -365,12 +369,17 @@ async def _run_risk_monitor(deps: AgentDeps, model: object) -> None:
 
 
 async def _run_ideation_loop(deps: AgentDeps, model: object) -> None:
-    """Periodic OHLC analysis by Ideation Agent (every 15 minutes)."""
+    """Periodic OHLC analysis by Ideation Agent (every 15 minutes).
+
+    Blocks until at least one trading pair is selected, then runs
+    immediately. Pauses again if all pairs are deselected mid-session.
+    """
     history: list = []
+    output_to_panel(1, "[ideation] Waiting for pair selection...")
+    await deps.state.pairs_ready.wait()
+    output_to_panel(1, "[ideation] Pairs selected — starting analysis")
+
     while not deps.state.shutting_down:
-        await asyncio.sleep(IDEATION_INTERVAL)
-        if deps.state.shutting_down:
-            break
         try:
             history = await ideation_agent.run_periodic(
                 deps, history, model=model
@@ -378,3 +387,13 @@ async def _run_ideation_loop(deps: AgentDeps, model: object) -> None:
         except Exception:
             traceback.print_exc(file=sys.stderr)
             output_to_panel(1, "[ideation] [error] Ideation Agent encountered an error")
+
+        await asyncio.sleep(IDEATION_INTERVAL)
+        if deps.state.shutting_down:
+            break
+
+        # Pause if all pairs were deselected
+        if not deps.state.active_pairs:
+            output_to_panel(1, "[ideation] No active pairs — pausing")
+            await deps.state.pairs_ready.wait()
+            output_to_panel(1, "[ideation] Pairs selected — resuming analysis")
