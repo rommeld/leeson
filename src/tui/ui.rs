@@ -270,7 +270,9 @@ fn render_api_keys_overlay(frame: &mut Frame, state: &ApiKeysEditState) {
         let status_span = match status {
             FieldStatus::NotSet => Span::styled(" [not set]", Style::default().fg(Color::DarkGray)),
             FieldStatus::Set => Span::styled(" [set]", Style::default().fg(Color::Green)),
-            FieldStatus::NewValue => Span::styled(" [new: ********]", Style::default().fg(Color::Yellow)),
+            FieldStatus::NewValue => {
+                Span::styled(" [new: ********]", Style::default().fg(Color::Yellow))
+            }
         };
 
         if state.editing && is_selected {

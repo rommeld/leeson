@@ -82,10 +82,10 @@ pub fn fetch_config() -> crate::Result<AppConfig> {
 
     let simulation = non_empty_var("LEESON_SIMULATION").is_some_and(|v| v == "true" || v == "1");
 
-    let token_input_cost = non_empty_var("LEESON_TOKEN_INPUT_COST")
-        .and_then(|v| v.parse::<Decimal>().ok());
-    let token_output_cost = non_empty_var("LEESON_TOKEN_OUTPUT_COST")
-        .and_then(|v| v.parse::<Decimal>().ok());
+    let token_input_cost =
+        non_empty_var("LEESON_TOKEN_INPUT_COST").and_then(|v| v.parse::<Decimal>().ok());
+    let token_output_cost =
+        non_empty_var("LEESON_TOKEN_OUTPUT_COST").and_then(|v| v.parse::<Decimal>().ok());
 
     Ok(AppConfig {
         kraken: KrakenConfig {

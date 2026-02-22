@@ -75,12 +75,10 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
     let token_spans: Vec<Span> = if app.token_usage.total_tokens() > 0 {
         let total = app.token_usage.total_tokens();
         let label = format_token_count(total);
-        let mut spans = vec![
-            Span::styled(
-                format!(" {label} "),
-                Style::default().fg(Color::Magenta),
-            ),
-        ];
+        let mut spans = vec![Span::styled(
+            format!(" {label} "),
+            Style::default().fg(Color::Magenta),
+        )];
         if let Some(cost) = app.token_usage.estimated_cost() {
             spans.push(Span::styled(
                 format!("${cost:.4} "),

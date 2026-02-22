@@ -9,7 +9,7 @@ use leeson::LeesonError;
 use leeson::agent::{AgentCommand, AgentHandle, spawn_multi_agent};
 use leeson::auth::validate_credentials;
 use leeson::config::fetch_config;
-use leeson::credentials;
+use leeson::credentials::{self, CredentialKey};
 use leeson::models::Channel;
 use leeson::models::add_order::AddOrderRequest;
 use leeson::models::book::BookDepth;
@@ -17,7 +17,7 @@ use leeson::risk::RiskGuard;
 use leeson::risk::config::{AgentRiskParams, RiskConfig};
 use leeson::simulation::SimulationEngine;
 use leeson::tls::build_tls_config;
-use leeson::tui::app::{Mode, PendingOrder, SimulationStats};
+use leeson::tui::app::{ApiKeysEditState, Mode, PendingOrder, SimulationStats};
 use leeson::tui::{self, App, Message};
 use leeson::websocket::{
     ConnectionCommand, ConnectionManager, add_order, subscribe, subscribe_book, unsubscribe,
@@ -39,13 +39,18 @@ async fn main() -> Result<(), LeesonError> {
         None
     };
 
+    let any_credentials_missing = CredentialKey::ALL
+        .iter()
+        .any(|key| std::env::var(key.env_var()).unwrap_or_default().is_empty());
+
     let has_credentials = matches!(
         (&app_config.kraken.api_key, &app_config.kraken.api_secret),
         (Some(k), Some(s)) if !k.is_empty() && !s.is_empty()
     );
 
-    // Validate API credentials if provided
-    let (credentials_valid, auth_error) = if has_credentials {
+    // Validate API credentials only when all creds are present;
+    // when some are missing the overlay will open first.
+    let (credentials_valid, auth_error) = if !any_credentials_missing && has_credentials {
         let key = app_config.kraken.api_key.as_deref().unwrap();
         let secret = app_config.kraken.api_secret.as_deref().unwrap();
         match validate_credentials(key, secret, (*tls_config).clone()).await {
@@ -86,6 +91,12 @@ async fn main() -> Result<(), LeesonError> {
         app.show_error(format!("Auth failed: {}", error));
     }
 
+    // Auto-open the API keys overlay when any credentials are missing
+    if any_credentials_missing {
+        app.api_keys_edit = Some(ApiKeysEditState::new());
+        app.mode = Mode::ApiKeys;
+    }
+
     // Create message channel (shared with connection manager).
     // 512 slots: absorbs WebSocket data bursts without blocking producers.
     let (tx, mut rx) = mpsc::channel::<Message>(512);
@@ -98,18 +109,27 @@ async fn main() -> Result<(), LeesonError> {
     let writer: Arc<tokio::sync::Mutex<Option<leeson::websocket::WsWriter>>> =
         Arc::new(tokio::sync::Mutex::new(None));
 
-    // Spawn the connection manager — credentials move into the manager,
-    // which is the sole owner for the rest of the process lifetime.
-    let manager = ConnectionManager::new(
-        url,
-        tls_config,
-        app_config.kraken.api_key,
-        app_config.kraken.api_secret,
-        tx.clone(),
-        writer.clone(),
-        cmd_rx,
-    );
-    tokio::spawn(async move { manager.run().await });
+    // Track whether the connection manager and agents have been spawned.
+    // When credentials are missing we defer spawning until the overlay is dismissed.
+    let mut setup_complete = !any_credentials_missing;
+    let mut deferred_cmd_rx: Option<mpsc::Receiver<ConnectionCommand>> = None;
+
+    if setup_complete {
+        // Spawn the connection manager — credentials move into the manager,
+        // which is the sole owner for the rest of the process lifetime.
+        let manager = ConnectionManager::new(
+            url,
+            tls_config.clone(),
+            app_config.kraken.api_key,
+            app_config.kraken.api_secret,
+            tx.clone(),
+            writer.clone(),
+            cmd_rx,
+        );
+        tokio::spawn(async move { manager.run().await });
+    } else {
+        deferred_cmd_rx = Some(cmd_rx);
+    }
 
     // Spawn event reader for keyboard input
     tui::event::spawn_event_reader(tx.clone());
@@ -117,11 +137,13 @@ async fn main() -> Result<(), LeesonError> {
     // Spawn tick timer for periodic updates
     tui::event::spawn_tick_timer(tx.clone(), 250);
 
-    // Spawn agent subprocesses
+    // Spawn agent subprocesses (deferred when credentials are missing)
     let mut agents: [Option<AgentHandle>; 3] = [None, None, None];
-    match spawn_multi_agent(0, tx.clone()) {
-        Ok(handle) => agents[0] = Some(handle),
-        Err(e) => app.show_error(format!("Failed to spawn multi-agent system: {e}")),
+    if setup_complete {
+        match spawn_multi_agent(0, tx.clone()) {
+            Ok(handle) => agents[0] = Some(handle),
+            Err(e) => app.show_error(format!("Failed to spawn multi-agent system: {e}")),
+        }
     }
 
     // Per-symbol throttle for ticker updates to agents (max once per 5 seconds)
@@ -420,8 +442,6 @@ async fn main() -> Result<(), LeesonError> {
                         }
                     }
                     tui::event::Action::SaveApiKeys { values } => {
-                        use leeson::credentials::CredentialKey;
-
                         let mut saved = 0u32;
                         let mut errors = Vec::new();
                         let mut kraken_changed = false;
@@ -454,15 +474,15 @@ async fn main() -> Result<(), LeesonError> {
                         }
 
                         // If Kraken credentials changed, tell the connection manager
-                        if kraken_changed {
+                        // (only if it has already been spawned — otherwise it will
+                        // receive the credentials at construction time).
+                        if kraken_changed && setup_complete {
                             let api_key = credentials::load(CredentialKey::KrakenApiKey);
                             let api_secret = credentials::load(CredentialKey::KrakenApiSecret);
-                            if let Err(e) = cmd_tx.try_send(
-                                ConnectionCommand::UpdateCredentials {
-                                    api_key,
-                                    api_secret,
-                                },
-                            ) {
+                            if let Err(e) = cmd_tx.try_send(ConnectionCommand::UpdateCredentials {
+                                api_key,
+                                api_secret,
+                            }) {
                                 tracing::warn!(
                                     "command channel full, dropping UpdateCredentials: {e}"
                                 );
@@ -470,6 +490,59 @@ async fn main() -> Result<(), LeesonError> {
                             app.authenticated = true;
                         }
                     }
+                }
+            }
+
+            // Complete deferred setup once the API keys overlay is dismissed
+            if !setup_complete && app.mode != Mode::ApiKeys {
+                setup_complete = true;
+
+                // Re-read credentials (SaveApiKeys updated env vars and keychain)
+                let api_key = credentials::load(CredentialKey::KrakenApiKey);
+                let api_secret = credentials::load(CredentialKey::KrakenApiSecret);
+
+                let has_creds = api_key.is_some() && api_secret.is_some();
+
+                // Determine the WebSocket URL based on available credentials
+                let url = if app_config.simulation {
+                    app_config.kraken.websocket_url.clone()
+                } else if has_creds {
+                    // Validate credentials before connecting
+                    if let (Some(k), Some(s)) = (&api_key, &api_secret) {
+                        match validate_credentials(k, s, (*tls_config).clone()).await {
+                            Ok(_) => app.authenticated = true,
+                            Err(e) => {
+                                app.show_error(format!("Auth failed: {e}"));
+                            }
+                        }
+                    }
+                    if app.authenticated {
+                        "wss://ws-auth.kraken.com/v2".to_string()
+                    } else {
+                        app_config.kraken.websocket_url.clone()
+                    }
+                } else {
+                    app_config.kraken.websocket_url.clone()
+                };
+
+                // Spawn the connection manager with the deferred cmd_rx
+                if let Some(cmd_rx) = deferred_cmd_rx.take() {
+                    let manager = ConnectionManager::new(
+                        url,
+                        tls_config.clone(),
+                        api_key,
+                        api_secret,
+                        tx.clone(),
+                        writer.clone(),
+                        cmd_rx,
+                    );
+                    tokio::spawn(async move { manager.run().await });
+                }
+
+                // Spawn agent subprocesses
+                match spawn_multi_agent(0, tx.clone()) {
+                    Ok(handle) => agents[0] = Some(handle),
+                    Err(e) => app.show_error(format!("Failed to spawn multi-agent system: {e}")),
                 }
             }
         }
