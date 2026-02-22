@@ -38,6 +38,8 @@ pub enum AgentCommand {
     TradeUpdate(Vec<TradeData>),
     /// Balance changes.
     BalanceUpdate(Vec<BalanceData>),
+    /// Active trading pairs selected by the operator.
+    ActivePairs(Vec<String>),
     /// Request the agent to shut down gracefully.
     Shutdown,
 }
@@ -107,6 +109,9 @@ enum TuiToAgent {
     },
     BalanceUpdate {
         data: Vec<BalanceData>,
+    },
+    ActivePairs {
+        pairs: Vec<String>,
     },
     Shutdown,
 }
@@ -296,6 +301,7 @@ fn spawn_stdin_writer(
                 AgentCommand::TickerUpdate(data) => TuiToAgent::TickerUpdate { data },
                 AgentCommand::TradeUpdate(data) => TuiToAgent::TradeUpdate { data },
                 AgentCommand::BalanceUpdate(data) => TuiToAgent::BalanceUpdate { data },
+                AgentCommand::ActivePairs(pairs) => TuiToAgent::ActivePairs { pairs },
                 AgentCommand::Shutdown => TuiToAgent::Shutdown,
             };
             let mut json =
