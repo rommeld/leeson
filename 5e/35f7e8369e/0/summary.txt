@@ -1,0 +1,17 @@
+Implementation complete. Here's a summary of all changes:
+
+**Files modified:**
+
+| File | Change |
+|------|--------|
+| `Cargo.toml` | Added `keyring = "3"` dependency |
+| `src/lib.rs` | Added `pub mod credentials;` |
+| `src/credentials.rs` | **New** — `CredentialKey` enum, `load`/`save`/`is_set`/`populate_env_from_keychain` functions using macOS Keychain via the `keyring` crate |
+| `src/main.rs` | Calls `populate_env_from_keychain()` at startup before `fetch_config()`, handles `Action::SaveApiKeys` to persist keys + trigger reconnection |
+| `src/tui/app.rs` | Added `Mode::ApiKeys`, `ApiKeysEditState`, `ApiKeyField`, `FieldStatus`, and `api_keys_edit` field on `App` |
+| `src/tui/ui.rs` | Added `render_api_keys_overlay()` with centered dialog, field status indicators, and help text |
+| `src/tui/event.rs` | Added `Action::SaveApiKeys`, `a` keybinding, `handle_api_keys_mode()`, `handle_api_key_field_edit()` |
+| `src/websocket/connection.rs` | Added `UpdateCredentials` command variant and `CredentialsUpdated` disconnect reason with no-backoff reconnection |
+| `src/tui/tabs/agent.rs` | Added `[a]api keys` to normal-mode keybindings and `Mode::ApiKeys` help text |
+
+**Verification:** `cargo check`, `cargo clippy` (0 warnings), `cargo test` (138 passed) all clean.

@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "5e35f7e8369e",
+  "strategy": "auto-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "Cargo.toml",
+    "src/credentials.rs",
+    "src/lib.rs",
+    "src/main.rs",
+    "src/tui/app.rs",
+    "src/tui/event.rs",
+    "src/tui/tabs/agent.rs",
+    "src/tui/ui.rs",
+    "src/websocket/connection.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/5e/35f7e8369e/0/metadata.json",
+      "transcript": "/5e/35f7e8369e/0/full.jsonl",
+      "context": "",
+      "content_hash": "/5e/35f7e8369e/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 57,
+    "cache_creation_tokens": 76121,
+    "cache_read_tokens": 4300312,
+    "output_tokens": 6514,
+    "api_call_count": 55
+  }
+}
