@@ -17,7 +17,17 @@
       "Bash(gh run view:*)",
       "Bash(git -C /Users/denny/Documents/repos/leeson add -f certs/gts_root_r4.pem)",
       "Bash(git -C /Users/denny/Documents/repos/leeson status)",
-      "WebFetch(domain:pyo3.rs)"
+      "WebFetch(domain:pyo3.rs)",
+      "Bash(ls:*)",
+      "WebFetch(domain:ai.pydantic.dev)",
+      "WebFetch(domain:docs.fireworks.ai)",
+      "Bash(python3:*)",
+      "Bash(grep:*)",
+      "Bash(uv sync:*)",
+      "Bash(uv run:*)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

@@ -76,6 +76,10 @@ enum AgentToTui {
         #[serde(default)]
         cl_ord_id: Option<String>,
     },
+    TokenUsage {
+        input_tokens: u64,
+        output_tokens: u64,
+    },
 }
 
 /// JSON message from the TUI to a Python agent (stdin).
@@ -244,6 +248,15 @@ fn spawn_stdout_reader(
                         qty,
                         price,
                         cl_ord_id,
+                    });
+                }
+                Ok(AgentToTui::TokenUsage {
+                    input_tokens,
+                    output_tokens,
+                }) => {
+                    let _ = tx.try_send(Message::AgentTokenUsage {
+                        input_tokens,
+                        output_tokens,
                     });
                 }
                 Err(_) => {

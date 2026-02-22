@@ -10,7 +10,7 @@ from __future__ import annotations
 from pydantic_ai import Agent, RunContext
 
 from multi_agent.bridge import output_to_panel
-from multi_agent.models import AgentDeps, AgentRole, UserRequest
+from multi_agent.models import AgentDeps, AgentRole, UserRequest, record_usage
 
 PANEL = 0
 
@@ -107,6 +107,7 @@ async def run_once(
     result = await user_agent.run(
         user_input, deps=deps, message_history=history, model=model
     )
+    record_usage(deps, result)
     # Truncate history at 30 messages
     history = result.all_messages()[-30:]
     output_to_panel(PANEL, result.output)

@@ -15,6 +15,7 @@ from multi_agent.models import (
     ApprovedOrder,
     ClosePosition,
     OrderPlaced,
+    record_usage,
 )
 
 PANEL = 2
@@ -120,7 +121,8 @@ async def run_on_approved_order(
         f"Reason: {order.reason}\n\n"
         f"Use the place_order tool with these exact parameters."
     )
-    await execution_agent.run(prompt, deps=deps, model=model)
+    result = await execution_agent.run(prompt, deps=deps, model=model)
+    record_usage(deps, result)
 
 
 async def run_on_close_position(
@@ -137,7 +139,8 @@ async def run_on_close_position(
         f"Reason: {close.reason}\n\n"
         f"Use the place_order tool with order_type='market'."
     )
-    await execution_agent.run(prompt, deps=deps, model=model)
+    result = await execution_agent.run(prompt, deps=deps, model=model)
+    record_usage(deps, result)
 
 
 async def run_on_order_response(

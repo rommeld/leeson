@@ -70,6 +70,15 @@ def send_error(message: str) -> None:
     send_to_tui({"type": "error", "message": message})
 
 
+def send_token_usage(input_tokens: int, output_tokens: int) -> None:
+    """Report cumulative token usage to the TUI status bar."""
+    send_to_tui({
+        "type": "token_usage",
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+    })
+
+
 def send_place_order(
     symbol: str,
     side: str,

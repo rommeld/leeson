@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
 
+from multi_agent.bridge import send_token_usage
+
 if TYPE_CHECKING:
     from multi_agent.bus import AgentBus
     from multi_agent.state import SharedState
@@ -126,3 +128,11 @@ class AgentDeps:
     state: SharedState
     bus: AgentBus
     output_panel: int
+
+
+def record_usage(deps: AgentDeps, result: object) -> None:
+    """Record token usage from an agent run result and report to the TUI."""
+    usage = result.usage()
+    deps.state.total_input_tokens += usage.request_tokens or 0
+    deps.state.total_output_tokens += usage.response_tokens or 0
+    send_token_usage(deps.state.total_input_tokens, deps.state.total_output_tokens)

@@ -18,6 +18,7 @@ from multi_agent.models import (
     ConsultMarket,
     MarketAnalysis,
     TradeIdea,
+    record_usage,
 )
 
 PANEL = 2
@@ -202,6 +203,7 @@ async def run_on_trade_idea(
     result = await risk_agent.run(
         prompt, deps=deps, message_history=history, model=model
     )
+    record_usage(deps, result)
     history = result.all_messages()[-30:]
     return history
 
@@ -219,6 +221,7 @@ async def run_on_market_analysis(
     result = await risk_agent.run(
         prompt, deps=deps, message_history=history, model=model
     )
+    record_usage(deps, result)
     history = result.all_messages()[-30:]
     return history
 
@@ -231,6 +234,7 @@ async def run_on_execution_update(
     result = await risk_agent.run(
         prompt, deps=deps, message_history=history, model=model
     )
+    record_usage(deps, result)
     history = result.all_messages()[-30:]
     return history
 
@@ -249,5 +253,6 @@ async def run_position_review(
     result = await risk_agent.run(
         prompt, deps=deps, message_history=history, model=model
     )
+    record_usage(deps, result)
     history = result.all_messages()[-30:]
     return history

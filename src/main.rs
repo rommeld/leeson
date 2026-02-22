@@ -76,6 +76,8 @@ async fn main() -> Result<(), LeesonError> {
     app.agent_risk_params = agent_risk_params;
     app.authenticated = credentials_valid;
     app.simulation = app_config.simulation;
+    app.token_usage.input_cost_per_million = app_config.token_input_cost;
+    app.token_usage.output_cost_per_million = app_config.token_output_cost;
 
     // Show auth error if credentials were provided but invalid
     if let Some(error) = auth_error {

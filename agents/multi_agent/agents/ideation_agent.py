@@ -14,7 +14,7 @@ import httpx
 from pydantic_ai import Agent, RunContext
 
 from multi_agent.bridge import output_to_panel
-from multi_agent.models import AgentDeps, AgentRole, TradeIdea
+from multi_agent.models import AgentDeps, AgentRole, TradeIdea, record_usage
 
 PANEL = 1
 
@@ -212,6 +212,7 @@ async def run_periodic(
     result = await ideation_agent.run(
         prompt, deps=deps, message_history=history, model=model
     )
+    record_usage(deps, result)
     history = result.all_messages()[-30:]
     output_to_panel(PANEL, f"[ideation] {result.output}")
     return history

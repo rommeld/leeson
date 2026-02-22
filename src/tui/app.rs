@@ -113,6 +113,10 @@ pub struct App {
     /// State for the risk parameters edit overlay.
     pub risk_edit: Option<RiskEditState>,
 
+    // -- Token Usage --
+    /// Cumulative token usage from agent LLM calls.
+    pub token_usage: TokenUsageStats,
+
     // -- Simulation --
     /// Whether the application is running in simulation mode.
     pub simulation: bool,
@@ -183,6 +187,8 @@ impl App {
             last_heartbeat: None,
             authenticated: false,
             private_connected: false,
+
+            token_usage: TokenUsageStats::default(),
 
             simulation: false,
             sim_stats: SimulationStats::default(),
@@ -594,6 +600,43 @@ pub struct ErrorDisplay {
     pub message: String,
     /// When the error was shown.
     pub timestamp: Instant,
+}
+
+/// Cumulative token usage from agent LLM calls.
+#[derive(Clone, Debug, Default)]
+pub struct TokenUsageStats {
+    /// Total input (prompt) tokens across all calls.
+    pub input_tokens: u64,
+    /// Total output (completion) tokens across all calls.
+    pub output_tokens: u64,
+    /// USD cost per million input tokens (from env var).
+    pub input_cost_per_million: Option<Decimal>,
+    /// USD cost per million output tokens (from env var).
+    pub output_cost_per_million: Option<Decimal>,
+}
+
+impl TokenUsageStats {
+    /// Total tokens (input + output).
+    pub fn total_tokens(&self) -> u64 {
+        self.input_tokens + self.output_tokens
+    }
+
+    /// Estimated cost in USD, if rates are configured.
+    pub fn estimated_cost(&self) -> Option<Decimal> {
+        let million = Decimal::from(1_000_000);
+        let input_cost = self
+            .input_cost_per_million
+            .map(|rate| rate * Decimal::from(self.input_tokens) / million);
+        let output_cost = self
+            .output_cost_per_million
+            .map(|rate| rate * Decimal::from(self.output_tokens) / million);
+        match (input_cost, output_cost) {
+            (Some(i), Some(o)) => Some(i + o),
+            (Some(i), None) => Some(i),
+            (None, Some(o)) => Some(o),
+            (None, None) => None,
+        }
+    }
 }
 
 /// Simulation performance statistics for TUI display.

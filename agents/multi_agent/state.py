@@ -53,3 +53,6 @@ class SharedState:
     shutting_down: bool = False
     # Track last analyzed price per symbol for rate limiting
     last_analyzed_price: dict[str, float] = field(default_factory=dict)
+    # Cumulative token usage across all LLM calls
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0

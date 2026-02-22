@@ -8,6 +8,7 @@
 
 use std::fmt;
 
+use rust_decimal::Decimal;
 use zeroize::Zeroizing;
 
 /// Default public WebSocket endpoint.
@@ -19,6 +20,10 @@ pub struct AppConfig {
     pub kraken: KrakenConfig,
     /// When true, orders are simulated locally instead of sent to the exchange.
     pub simulation: bool,
+    /// USD cost per million input tokens (from `LEESON_TOKEN_INPUT_COST`).
+    pub token_input_cost: Option<Decimal>,
+    /// USD cost per million output tokens (from `LEESON_TOKEN_OUTPUT_COST`).
+    pub token_output_cost: Option<Decimal>,
 }
 
 /// Kraken-specific configuration values.
@@ -77,6 +82,11 @@ pub fn fetch_config() -> crate::Result<AppConfig> {
 
     let simulation = non_empty_var("LEESON_SIMULATION").is_some_and(|v| v == "true" || v == "1");
 
+    let token_input_cost = non_empty_var("LEESON_TOKEN_INPUT_COST")
+        .and_then(|v| v.parse::<Decimal>().ok());
+    let token_output_cost = non_empty_var("LEESON_TOKEN_OUTPUT_COST")
+        .and_then(|v| v.parse::<Decimal>().ok());
+
     Ok(AppConfig {
         kraken: KrakenConfig {
             websocket_url,
@@ -84,6 +94,8 @@ pub fn fetch_config() -> crate::Result<AppConfig> {
             api_secret: api_secret.map(Zeroizing::new),
         },
         simulation,
+        token_input_cost,
+        token_output_cost,
     })
 }
 

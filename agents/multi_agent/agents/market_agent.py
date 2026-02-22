@@ -17,6 +17,7 @@ from multi_agent.models import (
     MarketAnalysis,
     TradeIdea,
     UserRequest,
+    record_usage,
 )
 
 PANEL = 1
@@ -152,6 +153,7 @@ async def run_on_user_request(
         message_history=history,
         model=model,
     )
+    record_usage(deps, result)
     history = result.all_messages()[-30:]
     output_to_panel(PANEL, result.output)
     return history
@@ -172,6 +174,7 @@ async def run_on_ticker(
     result = await market_agent.run(
         prompt, deps=deps, message_history=history, model=model
     )
+    record_usage(deps, result)
     history = result.all_messages()[-30:]
     output_to_panel(PANEL, result.output)
     return history
@@ -189,5 +192,6 @@ async def run_on_consultation(
         message_history=history,
         model=model,
     )
+    record_usage(deps, result)
     history = result.all_messages()[-30:]
     return history

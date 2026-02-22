@@ -105,6 +105,12 @@ pub enum Message {
         cl_ord_id: Option<String>,
     },
 
+    /// Cumulative token usage from agent LLM calls.
+    AgentTokenUsage {
+        input_tokens: u64,
+        output_tokens: u64,
+    },
+
     /// Token lifecycle state change.
     TokenState(super::app::TokenState),
 
@@ -505,6 +511,14 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                 None => "[agent exited]".to_string(),
             };
             app.add_agent_output(agent_index, msg);
+            None
+        }
+        Message::AgentTokenUsage {
+            input_tokens,
+            output_tokens,
+        } => {
+            app.token_usage.input_tokens = input_tokens;
+            app.token_usage.output_tokens = output_tokens;
             None
         }
         Message::TokenState(state) => {

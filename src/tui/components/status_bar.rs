@@ -71,7 +71,30 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         vec![]
     };
 
+    // Token usage badge: magenta, only shown when tokens have been used
+    let token_spans: Vec<Span> = if app.token_usage.total_tokens() > 0 {
+        let total = app.token_usage.total_tokens();
+        let label = format_token_count(total);
+        let mut spans = vec![
+            Span::styled(
+                format!(" {label} "),
+                Style::default().fg(Color::Magenta),
+            ),
+        ];
+        if let Some(cost) = app.token_usage.estimated_cost() {
+            spans.push(Span::styled(
+                format!("${cost:.4} "),
+                Style::default().fg(Color::Magenta),
+            ));
+        }
+        spans.push(Span::raw("│"));
+        spans
+    } else {
+        vec![]
+    };
+
     let mut spans = sim_spans;
+    spans.extend(token_spans);
     spans.extend(vec![
         Span::styled(
             format!(" {} ", app.connection_status.label()),
@@ -94,4 +117,15 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
 
     let para = Paragraph::new(line).style(Style::default().bg(Color::DarkGray));
     frame.render_widget(para, area);
+}
+
+/// Formats a token count into a compact human-readable string.
+fn format_token_count(count: u64) -> String {
+    if count >= 1_000_000 {
+        format!("{:.1}M tok", count as f64 / 1_000_000.0)
+    } else if count >= 1_000 {
+        format!("{:.1}k tok", count as f64 / 1_000.0)
+    } else {
+        format!("{count} tok")
+    }
 }
