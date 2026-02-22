@@ -1,0 +1,1 @@
+make the text output scrolleable. show scrollbar in text output.

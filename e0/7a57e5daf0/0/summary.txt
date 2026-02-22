@@ -1,0 +1,5 @@
+Compiles cleanly. The change adds a vertical scrollbar to each agent output panel when the content exceeds the viewport height. The scrollbar:
+
+- Appears on the right side of each panel, only when there's overflow
+- Tracks the current scroll position (thumb moves as you scroll with `j`/`k`/`g`/`G`)
+- Uses a dark gray thumb on a black track to keep it subtle
