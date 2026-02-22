@@ -1,0 +1,9 @@
+All three changes are implemented:
+
+1. **`state.py`** — Added `pairs_ready: asyncio.Event` field to `SharedState`
+2. **`orchestrator.py` (`_route_stdin_messages`)** — Set/clear the event when `active_pairs` messages arrive
+3. **`orchestrator.py` (`_run_ideation_loop`)** — Restructured to:
+   - Block on startup with "Waiting for pair selection..." until pairs are selected
+   - Run immediately after pair selection (no 15-minute initial wait)
+   - Sleep *after* each run instead of before
+   - Pause with "No active pairs — pausing" if all pairs are deselected, then resume when re-selected
