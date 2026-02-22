@@ -7,8 +7,10 @@ from enum import Enum
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel
+from pydantic_ai import Agent
+from pydantic_ai._agent_graph import ModelRequestNode
 
-from multi_agent.bridge import send_token_usage
+from multi_agent.bridge import send_stream_delta, send_stream_end, send_token_usage
 
 if TYPE_CHECKING:
     from multi_agent.bus import AgentBus
@@ -130,9 +132,67 @@ class AgentDeps:
     output_panel: int
 
 
+def validate_trade_idea(
+    positions: dict, symbol: str, side: str
+) -> tuple[bool, str | None]:
+    """Check if a trade idea duplicates or conflicts with open positions.
+
+    Returns (ok, message) — if ok is False the idea should be blocked.
+    If ok is True but message is not None, it's a warning (opposite-side
+    position exists).
+    """
+    for pos in positions.values():
+        if pos.symbol != symbol:
+            continue
+        if pos.side.lower() == side.lower():
+            return (
+                False,
+                f"Blocked: already have an open {pos.side} position in "
+                f"{symbol} (qty={pos.qty}, entry={pos.entry_price}). "
+                f"Cannot open a duplicate {side} trade.",
+            )
+        # Opposite side — warn but allow (legitimate reversal)
+        return (
+            True,
+            f"Warning: existing {pos.side} position in {symbol} "
+            f"(qty={pos.qty}, entry={pos.entry_price}). "
+            f"This {side} trade is a reversal/hedge — proceeding.",
+        )
+    return (True, None)
+
+
 def record_usage(deps: AgentDeps, result: object) -> None:
     """Record token usage from an agent run result and report to the TUI."""
     usage = result.usage()
     deps.state.total_input_tokens += usage.request_tokens or 0
     deps.state.total_output_tokens += usage.response_tokens or 0
     send_token_usage(deps.state.total_input_tokens, deps.state.total_output_tokens)
+
+
+async def run_agent_streamed(
+    agent: Agent,
+    prompt: str,
+    *,
+    deps: AgentDeps,
+    history: list | None = None,
+    model: object,
+    panel: int,
+) -> list:
+    """Run an agent with streaming output, sending deltas to the TUI.
+
+    Each model request node gets its own stream/flush cycle so tool calls
+    (which happen between model nodes) appear cleanly between streamed text.
+
+    Returns the (truncated) message history.
+    """
+    async with agent.iter(
+        prompt, deps=deps, message_history=history, model=model
+    ) as agent_run:
+        async for node in agent_run:
+            if isinstance(node, ModelRequestNode):
+                async with node.stream(agent_run.ctx) as stream:
+                    async for chunk in stream.stream_text(delta=True):
+                        send_stream_delta(panel, chunk)
+                send_stream_end(panel)
+    record_usage(deps, agent_run)
+    return agent_run.all_messages()[-30:]

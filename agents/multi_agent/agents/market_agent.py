@@ -17,7 +17,8 @@ from multi_agent.models import (
     MarketAnalysis,
     TradeIdea,
     UserRequest,
-    record_usage,
+    run_agent_streamed,
+    validate_trade_idea,
 )
 
 PANEL = 1
@@ -88,6 +89,12 @@ async def send_trade_idea(
         order_type: "limit" or "market".
         suggested_price: Limit price (required for limit orders).
     """
+    # Validate against open positions
+    ok, msg = validate_trade_idea(ctx.deps.state.positions, symbol, side)
+    if not ok:
+        output_to_panel(PANEL, f"[market] {msg}")
+        return msg
+
     idea = TradeIdea(
         symbol=symbol,
         side=side,
@@ -98,11 +105,13 @@ async def send_trade_idea(
         order_type=order_type,
     )
     await ctx.deps.bus.send(AgentRole.RISK, idea)
+
+    warning = f" ({msg})" if msg else ""
     output_to_panel(
         PANEL,
-        f"[idea] {symbol} {side} qty={suggested_qty} p={probability:.0%} — {reason}",
+        f"[idea] {symbol} {side} qty={suggested_qty} p={probability:.0%} — {reason}{warning}",
     )
-    return f"Trade idea sent to Risk Agent: {symbol} {side}"
+    return f"Trade idea sent to Risk Agent: {symbol} {side}{warning}"
 
 
 @market_agent.tool
@@ -147,16 +156,14 @@ async def run_on_user_request(
 ) -> list:
     """Run Market Agent on a user-forwarded request."""
     output_to_panel(PANEL, f"[user] {request.content}")
-    result = await market_agent.run(
+    return await run_agent_streamed(
+        market_agent,
         f"Analyze this request: {request.content}",
         deps=deps,
-        message_history=history,
+        history=history,
         model=model,
+        panel=PANEL,
     )
-    record_usage(deps, result)
-    history = result.all_messages()[-30:]
-    output_to_panel(PANEL, result.output)
-    return history
 
 
 async def run_on_ticker(
@@ -171,13 +178,9 @@ async def run_on_ticker(
         f"bid={ticker.bid} ask={ticker.ask} last={ticker.last} vol={ticker.volume}. "
         f"Assess if there's a trading opportunity."
     )
-    result = await market_agent.run(
-        prompt, deps=deps, message_history=history, model=model
+    return await run_agent_streamed(
+        market_agent, prompt, deps=deps, history=history, model=model, panel=PANEL
     )
-    record_usage(deps, result)
-    history = result.all_messages()[-30:]
-    output_to_panel(PANEL, result.output)
-    return history
 
 
 async def run_on_consultation(
@@ -185,13 +188,12 @@ async def run_on_consultation(
 ) -> list:
     """Run Market Agent on a Risk Agent consultation."""
     output_to_panel(PANEL, f"[risk asks] {consult.symbol}: {consult.question}")
-    result = await market_agent.run(
+    return await run_agent_streamed(
+        market_agent,
         f"Risk Agent asks about {consult.symbol}: {consult.question}. "
         f"Use respond_to_consultation tool to reply.",
         deps=deps,
-        message_history=history,
+        history=history,
         model=model,
+        panel=PANEL,
     )
-    record_usage(deps, result)
-    history = result.all_messages()[-30:]
-    return history

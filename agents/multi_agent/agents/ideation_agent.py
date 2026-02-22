@@ -15,7 +15,13 @@ import httpx
 from pydantic_ai import Agent, RunContext
 
 from multi_agent.bridge import output_to_panel
-from multi_agent.models import AgentDeps, AgentRole, TradeIdea, record_usage
+from multi_agent.models import (
+    AgentDeps,
+    AgentRole,
+    TradeIdea,
+    run_agent_streamed,
+    validate_trade_idea,
+)
 from multi_agent.technical import compute_all, find_key_levels, parse_candles
 
 PANEL = 1
@@ -157,6 +163,14 @@ ideation_agent = Agent(
         "You complement the Market Agent who focuses on real-time price "
         "action and microstructure. You focus on the bigger picture — trend "
         "direction, key levels, and indicator-confirmed entries.\n\n"
+        "Between full OHLC analyses, you receive market pulse checks with "
+        "current ticker prices and open positions. During pulse checks:\n"
+        "- Rely on key levels and trends from your most recent full analysis\n"
+        "- Spot price moves approaching key support/resistance levels\n"
+        "- Identify positions that may be at risk\n"
+        "- Flag urgent entry opportunities if price reaches a level you "
+        "previously identified\n"
+        "- If nothing notable, say so briefly — do not force a trade idea\n\n"
         "Be concise. Only propose trades with clear technical justification, "
         "multiple confirming indicators, and calibrated probability scores."
     ),
@@ -165,9 +179,24 @@ ideation_agent = Agent(
 
 @ideation_agent.instructions
 async def dynamic_context(ctx: RunContext[AgentDeps]) -> str:
-    """Inject current position info for context."""
+    """Inject live ticker data and open positions for context."""
     state = ctx.deps.state
-    parts = []
+    parts: list[str] = []
+
+    # Live ticker snapshots for active pairs
+    ticker_lines: list[str] = []
+    for symbol in state.active_pairs:
+        ticker = state.tickers.get(symbol)
+        if ticker:
+            ticker_lines.append(
+                f"  {symbol}: last={ticker.last} bid={ticker.bid} "
+                f"ask={ticker.ask} vol={ticker.volume}"
+            )
+    if ticker_lines:
+        parts.append("Current ticker data:")
+        parts.extend(ticker_lines)
+
+    # Open positions
     if state.positions:
         parts.append("Open positions:")
         for p in state.positions.values():
@@ -176,7 +205,16 @@ async def dynamic_context(ctx: RunContext[AgentDeps]) -> str:
                 f"entry={p.entry_price} current={p.current_price} "
                 f"pnl={p.unrealized_pnl}"
             )
-    return "\n".join(parts) if parts else "No open positions."
+        parts.append(
+            "\nIMPORTANT: Do NOT propose trades that duplicate existing "
+            "positions (same symbol and same side). If you see a strong "
+            "signal in the opposite direction of an existing position, "
+            "you may propose a reversal trade but note the conflict."
+        )
+    else:
+        parts.append("No open positions.")
+
+    return "\n".join(parts)
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +318,12 @@ async def send_trade_idea(
         order_type: "limit" or "market".
         suggested_price: Limit price (required for limit orders).
     """
+    # Validate against open positions
+    ok, msg = validate_trade_idea(ctx.deps.state.positions, symbol, side)
+    if not ok:
+        output_to_panel(PANEL, f"[ideation] {msg}")
+        return msg
+
     idea = TradeIdea(
         symbol=symbol,
         side=side,
@@ -290,11 +334,13 @@ async def send_trade_idea(
         order_type=order_type,
     )
     await ctx.deps.bus.send(AgentRole.RISK, idea)
+
+    warning = f" ({msg})" if msg else ""
     output_to_panel(
         PANEL,
-        f"[ideation] {symbol} {side} qty={suggested_qty} p={probability:.0%} — {reason}",
+        f"[ideation] {symbol} {side} qty={suggested_qty} p={probability:.0%} — {reason}{warning}",
     )
-    return f"Trade idea sent to Risk Agent: {symbol} {side}"
+    return f"Trade idea sent to Risk Agent: {symbol} {side}{warning}"
 
 
 # ---------------------------------------------------------------------------
@@ -357,10 +403,64 @@ async def run_periodic(
         f"multi-timeframe confluence."
     )
 
+    return await run_agent_streamed(
+        ideation_agent, prompt, deps=deps, history=history, model=model, panel=PANEL
+    )
+
+
+async def run_market_pulse(
+    deps: AgentDeps, history: list, *, model: object
+) -> list:
+    """Lightweight market pulse check using only SharedState data.
+
+    No REST API calls — uses cached ticker snapshots and open positions
+    to spot urgent opportunities or risks between full OHLC analyses.
+    """
+    state = deps.state
+    pairs = state.active_pairs
+    if not pairs:
+        return history
+
+    # Build compact ticker summary
+    ticker_lines: list[str] = []
+    for symbol in pairs:
+        ticker = state.tickers.get(symbol)
+        if ticker:
+            ticker_lines.append(
+                f"  {symbol}: last={ticker.last} bid={ticker.bid} "
+                f"ask={ticker.ask} vol={ticker.volume}"
+            )
+
+    if not ticker_lines:
+        return history  # no ticker data yet
+
+    # Build position summary
+    position_lines: list[str] = []
+    for p in state.positions.values():
+        position_lines.append(
+            f"  {p.symbol} {p.side} qty={p.qty} "
+            f"entry={p.entry_price} current={p.current_price} "
+            f"pnl={p.unrealized_pnl}"
+        )
+
+    pos_block = "\n".join(position_lines) if position_lines else "  None"
+
+    prompt = (
+        "MARKET PULSE CHECK — Quick assessment of current prices.\n\n"
+        f"Current prices:\n{chr(10).join(ticker_lines)}\n\n"
+        f"Open positions:\n{pos_block}\n\n"
+        "Based on your most recent full analysis, assess:\n"
+        "1. Has price moved to any key support/resistance levels?\n"
+        "2. Are any open positions at risk and need attention?\n"
+        "3. Is there an urgent entry opportunity at a level you identified?\n\n"
+        "If nothing notable, say so briefly. Do not force trade ideas. "
+        "Use send_trade_idea only if you see a clear, urgent opportunity."
+    )
+
     result = await ideation_agent.run(
         prompt, deps=deps, message_history=history, model=model
     )
     record_usage(deps, result)
     history = result.all_messages()[-30:]
-    output_to_panel(PANEL, f"[ideation] {result.output}")
+    output_to_panel(PANEL, f"[pulse] {result.output}")
     return history

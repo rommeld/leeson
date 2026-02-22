@@ -47,6 +47,9 @@ TICKER_CHANGE_THRESHOLD = 0.001  # 0.1%
 
 RISK_MONITOR_INTERVAL = 30  # seconds
 IDEATION_INTERVAL = 900  # 15 minutes
+MARKET_PULSE_INTERVAL = 150  # 2.5 minutes
+# Number of pulse cycles between full OHLC analyses
+PULSES_PER_FULL_CYCLE = IDEATION_INTERVAL // MARKET_PULSE_INTERVAL  # ~6
 
 
 async def run(loop: asyncio.AbstractEventLoop) -> None:
@@ -369,31 +372,46 @@ async def _run_risk_monitor(deps: AgentDeps, model: object) -> None:
 
 
 async def _run_ideation_loop(deps: AgentDeps, model: object) -> None:
-    """Periodic OHLC analysis by Ideation Agent (every 15 minutes).
+    """Dual-cadence ideation loop: full OHLC analysis + fast market pulses.
 
-    Blocks until at least one trading pair is selected, then runs
-    immediately. Pauses again if all pairs are deselected mid-session.
+    Blocks until at least one trading pair is selected, then runs a full
+    OHLC analysis immediately. Between full analyses, runs lightweight
+    market pulse checks every MARKET_PULSE_INTERVAL seconds using only
+    cached ticker data. Both cadences share the same LLM conversation
+    history.
     """
     history: list = []
+    pulse_count = 0
+
     output_to_panel(1, "[ideation] Waiting for pair selection...")
     await deps.state.pairs_ready.wait()
     output_to_panel(1, "[ideation] Pairs selected — starting analysis")
 
     while not deps.state.shutting_down:
         try:
-            history = await ideation_agent.run_periodic(
-                deps, history, model=model
-            )
+            if pulse_count == 0:
+                # Full OHLC analysis
+                history = await ideation_agent.run_periodic(
+                    deps, history, model=model
+                )
+            else:
+                # Lightweight market pulse check
+                history = await ideation_agent.run_market_pulse(
+                    deps, history, model=model
+                )
         except Exception:
             traceback.print_exc(file=sys.stderr)
             output_to_panel(1, "[ideation] [error] Ideation Agent encountered an error")
 
-        await asyncio.sleep(IDEATION_INTERVAL)
+        pulse_count = (pulse_count + 1) % PULSES_PER_FULL_CYCLE
+
+        await asyncio.sleep(MARKET_PULSE_INTERVAL)
         if deps.state.shutting_down:
             break
 
-        # Pause if all pairs were deselected
+        # Pause and reset cycle if all pairs were deselected
         if not deps.state.active_pairs:
             output_to_panel(1, "[ideation] No active pairs — pausing")
             await deps.state.pairs_ready.wait()
             output_to_panel(1, "[ideation] Pairs selected — resuming analysis")
+            pulse_count = 0  # force full analysis after re-selection
