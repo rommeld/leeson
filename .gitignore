@@ -6,10 +6,5 @@ __pycache__/
 /certs
 !/certs/gts_root_r4.pem
 
-
-
 # Claude Code worktrees
 .claude/worktrees/
-
-# logs
-leeson.log
