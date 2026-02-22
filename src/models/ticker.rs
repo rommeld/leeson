@@ -1,7 +1,7 @@
 //! Ticker (price summary) channel models.
 
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// An update message from the `ticker` channel.
 #[derive(Debug, Clone, Deserialize)]
@@ -14,7 +14,7 @@ pub struct TickerUpdateResponse {
 }
 
 /// Real-time ticker snapshot for a single trading pair.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct TickerData {
     /// Trading pair symbol (e.g., `"BTC/USD"`).

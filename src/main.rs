@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use tokio::sync::mpsc;
 
@@ -103,6 +105,10 @@ async fn main() -> Result<(), LeesonError> {
         Err(e) => app.show_error(format!("Failed to spawn Agent 1: {e}")),
     }
 
+    // Per-symbol throttle for ticker updates to agents (max once per 5 seconds)
+    let mut ticker_last_sent: HashMap<String, Instant> = HashMap::new();
+    const TICKER_THROTTLE: Duration = Duration::from_secs(5);
+
     // Main event loop
     loop {
         // Render UI
@@ -143,6 +149,53 @@ async fn main() -> Result<(), LeesonError> {
                 }
                 other => other,
             };
+
+            // Forward data streams to agents (message passes through to TUI unchanged)
+            if let Message::Execution(ref response) = message {
+                let cmd = AgentCommand::ExecutionUpdate(response.data.clone());
+                for handle in agents.iter().flatten() {
+                    let _ = handle.commands.send(cmd.clone());
+                }
+            }
+            if let Message::Balance(ref response) = message {
+                let cmd = AgentCommand::BalanceUpdate(response.data.clone());
+                for handle in agents.iter().flatten() {
+                    let _ = handle.commands.send(cmd.clone());
+                }
+            }
+            if let Message::Trade(ref response) = message {
+                let cmd = AgentCommand::TradeUpdate(response.data.clone());
+                for handle in agents.iter().flatten() {
+                    let _ = handle.commands.send(cmd.clone());
+                }
+            }
+            if let Message::OrderPlaced(ref response) = message {
+                let cmd = AgentCommand::OrderResponse {
+                    success: response.success,
+                    order_id: response.result.as_ref().map(|r| r.order_id.clone()),
+                    cl_ord_id: response.result.as_ref().and_then(|r| r.cl_ord_id.clone()),
+                    order_userref: response.result.as_ref().and_then(|r| r.order_userref),
+                    error: response.error.clone(),
+                };
+                for handle in agents.iter().flatten() {
+                    let _ = handle.commands.send(cmd.clone());
+                }
+            }
+            if let Message::Ticker(ref response) = message {
+                let now = Instant::now();
+                for data in &response.data {
+                    let should_send = ticker_last_sent
+                        .get(&data.symbol)
+                        .is_none_or(|last| now.duration_since(*last) >= TICKER_THROTTLE);
+                    if should_send {
+                        ticker_last_sent.insert(data.symbol.clone(), now);
+                        let cmd = AgentCommand::TickerUpdate(data.clone());
+                        for handle in agents.iter().flatten() {
+                            let _ = handle.commands.send(cmd.clone());
+                        }
+                    }
+                }
+            }
 
             // Handle actions that require WebSocket writes
             if let Some(action) = tui::event::update(&mut app, message) {

@@ -4,7 +4,7 @@
 //! authenticated user's account.
 
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A message from the `executions` channel (snapshot or update).
 #[derive(Debug, Clone, Deserialize)]
@@ -19,7 +19,7 @@ pub struct ExecutionUpdateResponse {
 }
 
 /// A single execution report.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct ExecutionData {
     // -- Identifiers --
@@ -89,7 +89,7 @@ pub struct ExecutionData {
 }
 
 /// Fee charged on a trade event.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct Fee {
     pub asset: String,
@@ -97,7 +97,7 @@ pub struct Fee {
 }
 
 /// Trigger parameters for stop/trailing orders.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct Triggers {
     pub reference: Option<String>,
@@ -111,7 +111,7 @@ pub struct Triggers {
 }
 
 /// Contingent (secondary) order template.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct Contingent {
     pub order_type: Option<String>,

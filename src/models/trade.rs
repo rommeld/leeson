@@ -1,7 +1,7 @@
 //! Trade channel models.
 
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// An update message from the `trade` channel.
 #[derive(Debug, Clone, Deserialize)]
@@ -14,7 +14,7 @@ pub struct TradeUpdateResponse {
 }
 
 /// A single executed trade.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct TradeData {
     pub symbol: String,
