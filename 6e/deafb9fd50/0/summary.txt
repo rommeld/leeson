@@ -1,0 +1,14 @@
+All done. Here's a summary of what was implemented:
+
+**Created `agents/multi_agent/technical.py`** — Pure Python indicator module with:
+- `Candle` NamedTuple and `parse_candles()` for Kraken data
+- 8 indicator functions: `sma`, `ema`, `rsi`, `macd`, `bollinger_bands`, `atr`, `volume_sma`, `price_momentum`
+- `find_key_levels()` — swing high/low detection with clustering
+- `compute_all()` — formats all indicators into a compact ~300 token summary
+
+**Modified `agents/multi_agent/agents/ideation_agent.py`**:
+- Refactored `fetch_ohlc` into `_fetch_raw_ohlc` (returns raw arrays) and `_format_ohlc` (24-candle table), with `fetch_ohlc` as backward-compatible wrapper
+- Added `calculate_indicators` tool — computes all indicators on full dataset (up to 720 candles)
+- Added `find_support_resistance_tool` — key levels for any timeframe
+- Updated `run_periodic()` to include computed indicators alongside the candle table
+- Updated system prompt to reference quantitative indicators and require 2-3 confirming signals before proposing trades
