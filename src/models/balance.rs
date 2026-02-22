@@ -1,7 +1,7 @@
 //! Balance channel models.
 
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Response from the balances channel (snapshot or update).
 #[derive(Debug, Clone, Deserialize)]
@@ -16,7 +16,7 @@ pub struct BalanceResponse {
 }
 
 /// Balance data for a single asset (used in snapshots).
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct BalanceData {
     /// Asset symbol (e.g., "BTC", "USD").
@@ -32,7 +32,7 @@ pub struct BalanceData {
 }
 
 /// Balance for a specific wallet.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[cfg_attr(feature = "python", pyo3::pyclass(frozen, get_all, from_py_object))]
 pub struct WalletBalance {
     /// Wallet type: "spot" or "earn".

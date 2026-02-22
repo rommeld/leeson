@@ -99,6 +99,7 @@ pub enum Message {
         order_type: String,
         qty: String,
         price: Option<String>,
+        cl_ord_id: Option<String>,
     },
 
     /// Token lifecycle state change.
@@ -436,6 +437,7 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
             order_type,
             qty,
             price,
+            cl_ord_id,
         } => {
             use crate::models::add_order::{AddOrderBuilder, OrderSide};
             use rust_decimal::Decimal;
@@ -449,7 +451,7 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                 };
                 let qty = Decimal::from_str(&qty).map_err(|e| format!("invalid qty: {e}"))?;
 
-                let builder = match order_type.to_lowercase().as_str() {
+                let mut builder = match order_type.to_lowercase().as_str() {
                     "market" => AddOrderBuilder::market(side, &symbol, qty),
                     "limit" => {
                         let price_str = price.as_deref().ok_or("limit order requires a price")?;
@@ -459,6 +461,10 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
                     }
                     other => return Err(format!("unsupported order type: {other}")),
                 };
+
+                if let Some(ref id) = cl_ord_id {
+                    builder = builder.with_cl_ord_id(id);
+                }
 
                 // Use a placeholder token — real token is set in main.rs before submission
                 builder

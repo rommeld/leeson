@@ -7,19 +7,37 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, Command};
 use tokio::sync::mpsc;
 
+use crate::models::balance::BalanceData;
+use crate::models::execution::ExecutionData;
+use crate::models::ticker::TickerData;
+use crate::models::trade::TradeData;
 use crate::tui::Message;
 
 /// Commands sent from the TUI to an agent subprocess.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum AgentCommand {
     /// A user-typed message to forward to the agent.
     UserMessage(String),
     /// Risk limits description for the agent's system prompt.
     RiskLimits(String),
-    /// Result of an order submission attempt.
-    OrderResult { success: bool, message: String },
+    /// Structured result of an order placement attempt.
+    OrderResponse {
+        success: bool,
+        order_id: Option<String>,
+        cl_ord_id: Option<String>,
+        order_userref: Option<i64>,
+        error: Option<String>,
+    },
     /// Token state changed — agents should know if orders can be submitted.
     TokenState(String),
+    /// Order status changes and trade execution events.
+    ExecutionUpdate(Vec<ExecutionData>),
+    /// Throttled price snapshot for a single trading pair.
+    TickerUpdate(TickerData),
+    /// Market trades.
+    TradeUpdate(Vec<TradeData>),
+    /// Balance changes.
+    BalanceUpdate(Vec<BalanceData>),
     /// Request the agent to shut down gracefully.
     Shutdown,
 }
@@ -53,6 +71,8 @@ enum AgentToTui {
         qty: String,
         #[serde(default)]
         price: Option<String>,
+        #[serde(default)]
+        cl_ord_id: Option<String>,
     },
 }
 
@@ -60,10 +80,34 @@ enum AgentToTui {
 #[derive(Debug, serde::Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum TuiToAgent {
-    UserMessage { content: String },
-    RiskLimits { description: String },
-    OrderResult { success: bool, message: String },
-    TokenState { state: String },
+    UserMessage {
+        content: String,
+    },
+    RiskLimits {
+        description: String,
+    },
+    OrderResponse {
+        success: bool,
+        order_id: Option<String>,
+        cl_ord_id: Option<String>,
+        order_userref: Option<i64>,
+        error: Option<String>,
+    },
+    TokenState {
+        state: String,
+    },
+    ExecutionUpdate {
+        data: Vec<ExecutionData>,
+    },
+    TickerUpdate {
+        data: TickerData,
+    },
+    TradeUpdate {
+        data: Vec<TradeData>,
+    },
+    BalanceUpdate {
+        data: Vec<BalanceData>,
+    },
     Shutdown,
 }
 
@@ -148,6 +192,7 @@ fn spawn_stdout_reader(
                     order_type,
                     qty,
                     price,
+                    cl_ord_id,
                 }) => {
                     let _ = tx.try_send(Message::AgentOrderRequest {
                         agent_index,
@@ -156,6 +201,7 @@ fn spawn_stdout_reader(
                         order_type,
                         qty,
                         price,
+                        cl_ord_id,
                     });
                 }
                 Err(_) => {
@@ -200,10 +246,24 @@ fn spawn_stdin_writer(
             let msg = match cmd {
                 AgentCommand::UserMessage(content) => TuiToAgent::UserMessage { content },
                 AgentCommand::RiskLimits(description) => TuiToAgent::RiskLimits { description },
-                AgentCommand::OrderResult { success, message } => {
-                    TuiToAgent::OrderResult { success, message }
-                }
+                AgentCommand::OrderResponse {
+                    success,
+                    order_id,
+                    cl_ord_id,
+                    order_userref,
+                    error,
+                } => TuiToAgent::OrderResponse {
+                    success,
+                    order_id,
+                    cl_ord_id,
+                    order_userref,
+                    error,
+                },
                 AgentCommand::TokenState(state) => TuiToAgent::TokenState { state },
+                AgentCommand::ExecutionUpdate(data) => TuiToAgent::ExecutionUpdate { data },
+                AgentCommand::TickerUpdate(data) => TuiToAgent::TickerUpdate { data },
+                AgentCommand::TradeUpdate(data) => TuiToAgent::TradeUpdate { data },
+                AgentCommand::BalanceUpdate(data) => TuiToAgent::BalanceUpdate { data },
                 AgentCommand::Shutdown => TuiToAgent::Shutdown,
             };
             let mut json =
