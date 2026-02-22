@@ -1,0 +1,115 @@
+# Session Context
+
+**Session ID:** 79fd001e-5008-4e69-909c-31d136beb0d7
+
+**Commit Message:** Implement the following plan:
+
+# Add Ideation Agent with Historical OHLC
+
+## Prompt
+
+Implement the following plan:
+
+# Add Ideation Agent with Historical OHLC Data Tool
+
+## Context
+
+The existing Market Agent focuses on real-time price action (ticker updates, spread dynamics). The user wants a second ideation agent that operates on **longer timeframes** — analyzing 24+ hours of OHLC candlestick data to identify trends, support/resistance levels, and pattern-based opportunities. This agent sends trade ideas to Risk Agent through the same approval flow as Market Agent, and shares Panel 1 for output.
+
+## Files to Create
+
+### `agents/multi_agent/agents/ideation_agent.py` (new)
+
+New agent with:
+- **System prompt**: Experienced technical analyst focused on multi-hour/daily chart patterns, trend analysis, support/resistance. Complements (not duplicates) Market Agent's real-time focus.
+- **Tool: `get_ohlc`** — Fetches OHLC candles from Kraken REST API (`GET https://api.kraken.com/0/public/OHLC`). Parameters: `symbol`, `interval` (default 60). Returns summary stats + last 24 candles formatted as a table. Uses `httpx.AsyncClient` with 10s timeout.
+- **Tool: `send_trade_idea`** — Same pattern as Market Agent's tool. Sends `TradeIdea` to Risk Agent via bus.
+- **Runner: `run_periodic`** — Called on schedule. Fetches OHLC for all active pairs, prompts LLM to analyze and propose ideas.
+
+Helper constants/functions at module level:
+- `_KRAKEN_OHLC_URL = "https://api.kraken.com/0/public/OHLC"`
+- `_VALID_INTERVALS = {1, 5, 15, 30, 60, 240, 1440, 10080, 21600}`
+- `_ws_pair_to_rest(symbol)` — strips `/` ("BTC/USD" → "BTCUSD")
+
+`get_ohlc` output format (~30 lines):
+```
+OHLC for BTC/USD (interval=60min, 720 candles available)
+Latest close: 97500.0  |  Period high: 98200.0  |  Period low: 96100.0
+24-candle change: +1200.00 (+1.25%)  |  Total volume: 1234.56
+
+Recent 24 candles (newest last):
+Time                | Open       | High       | Low        | Close      | Volume
+-------------------------------------------------------------------------------------
+2026-02-21 19:00    |  96300.0   |  96500.0   |  96100.0   |  96400.0   |    52.3
+...
+```
+
+## Files to Modify
+
+### `agents/multi_agent/models.py`
+
+- Add `IDEATION = "ideation"` to `AgentRole` enum
+
+The `AgentBus` auto-creates a queue for every `AgentRole` value, so no bus changes needed.
+
+### `agents/multi_agent/orchestrator.py`
+
+- Import the new `ideation_agent` module
+- Create `ideation_deps = AgentDeps(state=state, bus=bus, output_panel=1)`
+- Add new task: `_run_ideation_loop(ideation_deps, model)` — periodic timer (every 15 minutes), calls `ideation_agent.run_periodic` for all active pairs
+- Total concurrent tasks: 6 → 7
+
+### `agents/multi_agent/agents/__init__.py`
+
+- No change needed (orchestrator imports the module directly)
+
+### `agents/pyproject.toml`
+
+- Add `"httpx>=0.28"` to dependencies
+
+## What Does NOT Change
+
+- `market_agent.py` — the existing Market Agent is untouched
+- `risk_agent.py` / `execution_agent.py` — Risk already handles `TradeIdea` from any source
+- `bus.py` — auto-creates queues from `AgentRole` enum
+- `bridge.py` — reuse existing `output_to_panel`
+- `state.py` — no new shared state needed
+
+## Verification
+
+1. `uv sync` in `agents/` to install httpx
+2. Run the agent system — ideation agent should wake every 15 minutes, fetch OHLC for active pairs, and log analysis to Panel 1
+3. Confirm trade ideas from ideation agent flow through to Risk Agent
+4. Test `get_ohlc` with invalid pair/interval — should return descriptive error strings
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/denny/.REDACTED.jsonl
+
+## Summary
+
+Everything looks correct. Here's a summary of all changes:
+
+**Created:**
+- `agents/multi_agent/agents/ideation_agent.py` — New agent with:
+  - `get_ohlc` tool — fetches OHLC candles from Kraken REST API, returns formatted table with summary stats + last 24 candles
+  - `send_trade_idea` tool — sends `TradeIdea` to Risk Agent (same flow as Market Agent)
+  - `run_periodic` — entry point called by orchestrator; analyzes all active pairs for swing trade opportunities
+  - Helper: `_ws_pair_to_rest()`, `_VALID_INTERVALS`, `_KRAKEN_OHLC_URL`
+
+**Modified:**
+- `agents/multi_agent/models.py` — Added `IDEATION = "ideation"` to `AgentRole` enum (bus auto-creates its queue)
+- `agents/multi_agent/orchestrator.py` — Imported `ideation_agent`, created `ideation_deps` (panel 1), added 7th task `_run_ideation_loop` with 15-minute interval
+- `agents/pyproject.toml` — Added `"httpx>=0.28"` dependency
+
+## Key Actions
+
+- - **Read**: /Users/denny/Documents/repos/leeson/agents/multi_agent/models.py
+- - **Read**: /Users/denny/Documents/repos/leeson/agents/multi_agent/orchestrator.py
+- - **Read**: /Users/denny/Documents/repos/leeson/agents/multi_agent/agents/market_agent.py
+- - **Read**: /Users/denny/Documents/repos/leeson/agents/pyproject.toml
+- - **TaskCreate**: Add `IDEATION = "ideation"` to the AgentRole enum in models.py
+- - **TaskCreate**: Add `"httpx>=0.28"` to the dependencies list in agents/pyproject.toml
+- - **TaskCreate**: Create the new ideation agent with get_ohlc tool, send_trade_idea tool, and run_periodic runner
+- - **TaskCreate**: Import ideation_agent, create deps, add _run_ideation_loop task (15-min periodic timer)
+- - **TaskCreate**: Run uv sync in agents/ to install httpx, verify imports work
+- - **TaskUpdate**: 

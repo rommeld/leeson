@@ -1,0 +1,13 @@
+Everything looks correct. Here's a summary of all changes:
+
+**Created:**
+- `agents/multi_agent/agents/ideation_agent.py` — New agent with:
+  - `get_ohlc` tool — fetches OHLC candles from Kraken REST API, returns formatted table with summary stats + last 24 candles
+  - `send_trade_idea` tool — sends `TradeIdea` to Risk Agent (same flow as Market Agent)
+  - `run_periodic` — entry point called by orchestrator; analyzes all active pairs for swing trade opportunities
+  - Helper: `_ws_pair_to_rest()`, `_VALID_INTERVALS`, `_KRAKEN_OHLC_URL`
+
+**Modified:**
+- `agents/multi_agent/models.py` — Added `IDEATION = "ideation"` to `AgentRole` enum (bus auto-creates its queue)
+- `agents/multi_agent/orchestrator.py` — Imported `ideation_agent`, created `ideation_deps` (panel 1), added 7th task `_run_ideation_loop` with 15-minute interval
+- `agents/pyproject.toml` — Added `"httpx>=0.28"` dependency

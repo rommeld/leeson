@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "d277ac0b2634",
+  "strategy": "auto-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/multi_agent/agents/__pycache__/ideation_agent.cpython-314.pyc",
+    "agents/multi_agent/agents/ideation_agent.py",
+    "agents/multi_agent/models.py",
+    "agents/multi_agent/orchestrator.py",
+    "agents/pyproject.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d2/77ac0b2634/0/metadata.json",
+      "transcript": "/d2/77ac0b2634/0/full.jsonl",
+      "context": "",
+      "content_hash": "/d2/77ac0b2634/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 24,
+    "cache_creation_tokens": 26275,
+    "cache_read_tokens": 767942,
+    "output_tokens": 1727,
+    "api_call_count": 22
+  }
+}
