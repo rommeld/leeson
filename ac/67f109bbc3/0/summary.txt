@@ -1,0 +1,21 @@
+All tasks complete. Here's a summary of what was implemented:
+
+### Changes Made
+
+**1. `agents/multi_agent/models.py`** — Added `validate_trade_idea()` shared helper
+- Blocks duplicate trades (same symbol + same side as existing position)
+- Warns but allows opposite-side trades (legitimate reversals)
+- Returns `(ok, message)` tuple for both agents to use
+
+**2. `agents/multi_agent/agents/ideation_agent.py`**
+- **Enhanced `dynamic_context`** — Now injects live ticker snapshots (last, bid, ask, volume) for all active pairs, plus explicit instruction not to propose duplicate trades
+- **Added validation to `send_trade_idea`** — Calls `validate_trade_idea()` before sending to Risk Agent; blocked ideas return an error message to the LLM
+- **Updated system prompt** — Added guidance for pulse checks (rely on key levels from full analysis, don't force trades)
+- **Added `run_market_pulse()`** — Lightweight function that uses only SharedState tickers/positions (no REST calls), asks the LLM to assess price movement at key levels, position risk, and urgent opportunities
+
+**3. `agents/multi_agent/agents/market_agent.py`**
+- **Added same validation to `send_trade_idea`** — Consistent duplicate/conflict checking
+
+**4. `agents/multi_agent/orchestrator.py`**
+- **Added `MARKET_PULSE_INTERVAL = 150`** (2.5 min) and `PULSES_PER_FULL_CYCLE = 6`
+- **Replaced `_run_ideation_loop`** with dual-cadence loop: full OHLC at `pulse_count == 0`, market pulse otherwise, cycling every 6 intervals. Resets to full analysis on startup and after pair re-selection.
