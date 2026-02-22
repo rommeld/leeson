@@ -18,6 +18,7 @@ class AgentRole(str, Enum):
 
     USER = "user"
     MARKET = "market"
+    IDEATION = "ideation"
     RISK = "risk"
     EXECUTION = "execution"
 

@@ -1,12 +1,13 @@
 """Main event loop — routes messages between the TUI bridge and agents.
 
-Runs 6 concurrent asyncio tasks:
+Runs 7 concurrent asyncio tasks:
 1. route_stdin_messages — stdin bridge → agent bus
 2. run_user_agent_loop — process User Agent queue
 3. run_market_agent_loop — process Market Agent queue
 4. run_risk_agent_loop — process Risk Agent queue
 5. run_execution_agent_loop — process Execution Agent queue
 6. run_risk_monitor — periodic position review (every 30s)
+7. run_ideation_loop — periodic OHLC analysis (every 15 min)
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ from multi_agent.state import BalanceInfo, SharedState, TickerSnapshot
 
 from multi_agent.agents import (
     execution_agent,
+    ideation_agent,
     market_agent,
     risk_agent,
     user_agent,
@@ -44,6 +46,7 @@ from multi_agent.agents import (
 TICKER_CHANGE_THRESHOLD = 0.001  # 0.1%
 
 RISK_MONITOR_INTERVAL = 30  # seconds
+IDEATION_INTERVAL = 900  # 15 minutes
 
 
 async def run(loop: asyncio.AbstractEventLoop) -> None:
@@ -60,6 +63,7 @@ async def run(loop: asyncio.AbstractEventLoop) -> None:
     # Create per-agent deps with their output panel assignments
     user_deps = AgentDeps(state=state, bus=bus, output_panel=0)
     market_deps = AgentDeps(state=state, bus=bus, output_panel=1)
+    ideation_deps = AgentDeps(state=state, bus=bus, output_panel=1)
     risk_deps = AgentDeps(state=state, bus=bus, output_panel=2)
     exec_deps = AgentDeps(state=state, bus=bus, output_panel=2)
 
@@ -89,6 +93,10 @@ async def run(loop: asyncio.AbstractEventLoop) -> None:
         asyncio.create_task(
             _run_risk_monitor(risk_deps, model),
             name="risk_monitor",
+        ),
+        asyncio.create_task(
+            _run_ideation_loop(ideation_deps, model),
+            name="ideation_agent",
         ),
     ]
 
@@ -354,3 +362,19 @@ async def _run_risk_monitor(deps: AgentDeps, model: object) -> None:
             )
         except Exception:
             traceback.print_exc(file=sys.stderr)
+
+
+async def _run_ideation_loop(deps: AgentDeps, model: object) -> None:
+    """Periodic OHLC analysis by Ideation Agent (every 15 minutes)."""
+    history: list = []
+    while not deps.state.shutting_down:
+        await asyncio.sleep(IDEATION_INTERVAL)
+        if deps.state.shutting_down:
+            break
+        try:
+            history = await ideation_agent.run_periodic(
+                deps, history, model=model
+            )
+        except Exception:
+            traceback.print_exc(file=sys.stderr)
+            output_to_panel(1, "[ideation] [error] Ideation Agent encountered an error")
