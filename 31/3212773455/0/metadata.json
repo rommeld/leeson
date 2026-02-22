@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "313212773455",
+  "session_id": "4aedcd96-8ff7-45bb-8115-a803591f5225",
+  "strategy": "auto-commit",
+  "created_at": "2026-02-22T08:56:18.367895Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "TUI_PLAN.md"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "032e47a5-7f4f-4690-ac12-828b838cc303",
+  "checkpoint_transcript_start": 122,
+  "transcript_lines_at_start": 122,
+  "token_usage": {
+    "input_tokens": 5,
+    "cache_creation_tokens": 6826,
+    "cache_read_tokens": 123960,
+    "output_tokens": 138,
+    "api_call_count": 3
+  }
+}

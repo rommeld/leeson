@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "313212773455",
+  "strategy": "auto-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "TUI_PLAN.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/31/3212773455/0/metadata.json",
+      "transcript": "/31/3212773455/0/full.jsonl",
+      "context": "",
+      "content_hash": "/31/3212773455/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5,
+    "cache_creation_tokens": 6826,
+    "cache_read_tokens": 123960,
+    "output_tokens": 138,
+    "api_call_count": 3
+  }
+}
