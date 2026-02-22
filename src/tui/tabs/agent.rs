@@ -527,10 +527,11 @@ fn render_keybindings(frame: &mut Frame, area: Rect, app: &App) {
     let help = match app.mode {
         Mode::Insert => "[Esc]normal [Enter]send to Agent 1",
         Mode::Normal => {
-            "[Tab]switch tab [Space]toggle pair [i]Agent 1 input [1-3]focus agent [r]risk [?]help [q]quit"
+            "[Tab]switch tab [Space]toggle pair [i]Agent 1 input [1-3]focus agent [r]risk [a]api keys [?]help [q]quit"
         }
         Mode::Confirm => "[y]yes [n]no",
         Mode::RiskEdit => "[j/k]navigate [Space]toggle [Enter]edit [s]save [Esc]cancel",
+        Mode::ApiKeys => "[j/k]navigate [Enter]edit [s]save [Esc]cancel",
     };
 
     let para = Paragraph::new(help).style(Style::default().fg(Color::DarkGray));

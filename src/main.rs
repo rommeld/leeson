@@ -9,6 +9,7 @@ use leeson::LeesonError;
 use leeson::agent::{AgentCommand, AgentHandle, spawn_multi_agent};
 use leeson::auth::validate_credentials;
 use leeson::config::fetch_config;
+use leeson::credentials;
 use leeson::models::Channel;
 use leeson::models::add_order::AddOrderRequest;
 use leeson::models::book::BookDepth;
@@ -24,6 +25,7 @@ use leeson::websocket::{
 
 #[tokio::main]
 async fn main() -> Result<(), LeesonError> {
+    credentials::populate_env_from_keychain();
     let app_config = fetch_config()?;
     let tls_config = Arc::new(build_tls_config()?);
 
@@ -415,6 +417,57 @@ async fn main() -> Result<(), LeesonError> {
                         desc.push_str(&params.describe());
                         for handle in agents.iter().flatten() {
                             let _ = handle.commands.send(AgentCommand::RiskLimits(desc.clone()));
+                        }
+                    }
+                    tui::event::Action::SaveApiKeys { values } => {
+                        use leeson::credentials::CredentialKey;
+
+                        let mut saved = 0u32;
+                        let mut errors = Vec::new();
+                        let mut kraken_changed = false;
+
+                        for (i, new_value) in values.into_iter().enumerate() {
+                            if let Some(value) = new_value {
+                                let key = CredentialKey::ALL[i];
+                                match credentials::save(key, &value) {
+                                    Ok(()) => {
+                                        // SAFETY: main thread, single writer
+                                        unsafe {
+                                            std::env::set_var(key.env_var(), &value);
+                                        }
+                                        saved += 1;
+                                        if i == 1 || i == 2 {
+                                            kraken_changed = true;
+                                        }
+                                    }
+                                    Err(e) => {
+                                        errors.push(format!("{}: {e}", key.label()));
+                                    }
+                                }
+                            }
+                        }
+
+                        if !errors.is_empty() {
+                            app.show_error(format!("Keychain errors: {}", errors.join(", ")));
+                        } else if saved > 0 {
+                            app.show_error(format!("{saved} API key(s) saved"));
+                        }
+
+                        // If Kraken credentials changed, tell the connection manager
+                        if kraken_changed {
+                            let api_key = credentials::load(CredentialKey::KrakenApiKey);
+                            let api_secret = credentials::load(CredentialKey::KrakenApiSecret);
+                            if let Err(e) = cmd_tx.try_send(
+                                ConnectionCommand::UpdateCredentials {
+                                    api_key,
+                                    api_secret,
+                                },
+                            ) {
+                                tracing::warn!(
+                                    "command channel full, dropping UpdateCredentials: {e}"
+                                );
+                            }
+                            app.authenticated = true;
                         }
                     }
                 }

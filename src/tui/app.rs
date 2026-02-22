@@ -112,6 +112,8 @@ pub struct App {
     pub agent_risk_params: AgentRiskParams,
     /// State for the risk parameters edit overlay.
     pub risk_edit: Option<RiskEditState>,
+    /// State for the API keys edit overlay.
+    pub api_keys_edit: Option<ApiKeysEditState>,
 
     // -- Token Usage --
     /// Cumulative token usage from agent LLM calls.
@@ -181,6 +183,7 @@ impl App {
             pending_order: None,
             agent_risk_params: AgentRiskParams::default(),
             risk_edit: None,
+            api_keys_edit: None,
 
             connection_status: ConnectionStatus::Disconnected,
             token_state: TokenState::Unavailable,
@@ -430,6 +433,7 @@ pub enum Mode {
     Insert,
     Confirm,
     RiskEdit,
+    ApiKeys,
 }
 
 /// Authentication token lifecycle state.
@@ -591,6 +595,90 @@ impl RiskEditState {
             _ => String::new(),
         }
     }
+}
+
+/// State for the API keys edit overlay.
+#[derive(Clone, Debug)]
+pub struct ApiKeysEditState {
+    /// Index of the currently selected field (0..3).
+    pub selected: usize,
+    /// Whether the selected field is being edited.
+    pub editing: bool,
+    /// Text buffer for the field being edited.
+    pub input: String,
+    /// Cursor position within the input buffer.
+    pub cursor: usize,
+    /// Per-field state.
+    pub fields: [ApiKeyField; 3],
+}
+
+impl Default for ApiKeysEditState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl ApiKeysEditState {
+    /// Number of credential fields.
+    pub const FIELD_COUNT: usize = 3;
+
+    /// Creates a new edit state, checking which keys are already set.
+    pub fn new() -> Self {
+        use crate::credentials::{CredentialKey, is_set};
+
+        let fields = CredentialKey::ALL.map(|key| ApiKeyField {
+            was_set: is_set(key),
+            new_value: None,
+        });
+
+        Self {
+            selected: 0,
+            editing: false,
+            input: String::new(),
+            cursor: 0,
+            fields,
+        }
+    }
+
+    /// Returns the display label for the field at the given index.
+    pub fn field_label(index: usize) -> &'static str {
+        use crate::credentials::CredentialKey;
+        CredentialKey::ALL
+            .get(index)
+            .map_or("", |k| k.label())
+    }
+
+    /// Returns a status string for the field at the given index.
+    pub fn field_status(&self, index: usize) -> FieldStatus {
+        let field = &self.fields[index];
+        if field.new_value.is_some() {
+            FieldStatus::NewValue
+        } else if field.was_set {
+            FieldStatus::Set
+        } else {
+            FieldStatus::NotSet
+        }
+    }
+}
+
+/// Display status of a credential field.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FieldStatus {
+    /// No value in keychain.
+    NotSet,
+    /// Value exists in keychain.
+    Set,
+    /// A new value has been entered.
+    NewValue,
+}
+
+/// Per-field state in the API keys overlay.
+#[derive(Clone, Debug)]
+pub struct ApiKeyField {
+    /// Whether this key was already set when the overlay was opened.
+    pub was_set: bool,
+    /// New value entered by the user (None = not edited).
+    pub new_value: Option<String>,
 }
 
 /// Error message with timestamp for auto-clear.

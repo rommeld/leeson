@@ -88,13 +88,13 @@ pub fn is_set(key: CredentialKey) -> bool {
 /// Call this at startup before [`crate::config::fetch_config`].
 pub fn populate_env_from_keychain() {
     for key in CredentialKey::ALL {
-        if std::env::var(key.env_var()).is_err() {
-            if let Some(value) = load(key) {
-                debug!(key = key.env_var(), "loaded credential from keychain");
-                // SAFETY: single-threaded at this point (before tokio runtime starts tasks)
-                unsafe {
-                    std::env::set_var(key.env_var(), value.as_str());
-                }
+        if std::env::var(key.env_var()).is_err()
+            && let Some(value) = load(key)
+        {
+            debug!(key = key.env_var(), "loaded credential from keychain");
+            // SAFETY: single-threaded at this point (before tokio runtime starts tasks)
+            unsafe {
+                std::env::set_var(key.env_var(), value.as_str());
             }
         }
     }

@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use super::app::{App, Mode, RiskEditState, Tab};
+use super::app::{ApiKeysEditState, App, FieldStatus, Mode, RiskEditState, Tab};
 use super::tabs::{agent, trading_pair};
 
 /// Renders the entire application UI.
@@ -28,6 +28,13 @@ pub fn render(frame: &mut Frame, app: &App) {
         && let Some(ref state) = app.risk_edit
     {
         render_risk_edit_overlay(frame, state);
+    }
+
+    // Render API keys edit overlay
+    if app.mode == Mode::ApiKeys
+        && let Some(ref state) = app.api_keys_edit
+    {
+        render_api_keys_overlay(frame, state);
     }
 }
 
@@ -220,6 +227,125 @@ fn render_risk_edit_overlay(frame: &mut Frame, state: &RiskEditState) {
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Yellow))
         .title(" Risk Parameters ");
+
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+
+    frame.render_widget(paragraph, dialog);
+}
+
+/// Renders the API keys edit overlay.
+fn render_api_keys_overlay(frame: &mut Frame, state: &ApiKeysEditState) {
+    let area = frame.area();
+    let dialog = centered_rect(60, 50, area);
+
+    frame.render_widget(Clear, dialog);
+
+    let mut lines = vec![
+        Line::from(Span::styled(
+            "API Keys",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+
+    for i in 0..ApiKeysEditState::FIELD_COUNT {
+        let is_selected = i == state.selected;
+        let label = ApiKeysEditState::field_label(i);
+        let status = state.field_status(i);
+
+        let marker = if is_selected { "▸ " } else { "  " };
+
+        let label_style = if is_selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Cyan)
+        };
+
+        let status_span = match status {
+            FieldStatus::NotSet => Span::styled(" [not set]", Style::default().fg(Color::DarkGray)),
+            FieldStatus::Set => Span::styled(" [set]", Style::default().fg(Color::Green)),
+            FieldStatus::NewValue => Span::styled(" [new: ********]", Style::default().fg(Color::Yellow)),
+        };
+
+        if state.editing && is_selected {
+            // Show actual input text with cursor so user can verify paste
+            let value_style = Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::UNDERLINED);
+
+            lines.push(Line::from(vec![
+                Span::styled(marker, label_style),
+                Span::styled(format!("{label}: "), label_style),
+                Span::styled(format!("{}▏", state.input), value_style),
+            ]));
+        } else {
+            lines.push(Line::from(vec![
+                Span::styled(marker, label_style),
+                Span::styled(format!("{label}:"), label_style),
+                status_span,
+            ]));
+        }
+    }
+
+    lines.push(Line::from(""));
+
+    let help = if state.editing {
+        vec![
+            Span::styled(
+                "[Enter] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("confirm  "),
+            Span::styled(
+                "[Esc] ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("cancel edit"),
+        ]
+    } else {
+        vec![
+            Span::styled(
+                "[j/k] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("navigate  "),
+            Span::styled(
+                "[Enter] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("edit  "),
+            Span::styled(
+                "[s] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("save  "),
+            Span::styled(
+                "[Esc] ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("cancel"),
+        ]
+    };
+    lines.push(Line::from(help));
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(" API Keys ");
 
     let paragraph = Paragraph::new(lines)
         .block(block)

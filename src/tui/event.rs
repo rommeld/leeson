@@ -20,8 +20,8 @@ use crate::models::{
 use crate::risk::config::AgentRiskParams;
 
 use super::app::{
-    App, AssetBalance, Focus, MAX_BOOK_DEPTH, MAX_ORDERBOOK_HISTORY, Mode, OrderBookSnapshot,
-    RiskEditState, Tab,
+    ApiKeysEditState, App, AssetBalance, Focus, MAX_BOOK_DEPTH, MAX_ORDERBOOK_HISTORY, Mode,
+    OrderBookSnapshot, RiskEditState, Tab,
 };
 
 /// Maximum length (in bytes) for agent input text.
@@ -551,6 +551,11 @@ pub enum Action {
     CancelOrder(String),
     /// Operator saved updated agent risk parameters.
     SaveRiskParams(AgentRiskParams),
+    /// Operator saved API keys from the overlay.
+    SaveApiKeys {
+        /// New values for each credential (None = unchanged).
+        values: [Option<String>; 3],
+    },
 }
 
 /// Handles input events and updates application state.
@@ -572,6 +577,11 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Option<Action> {
         return handle_risk_edit_mode(app, key);
     }
 
+    // ApiKeys mode handles its own Esc (two-stage: cancel edit, then close)
+    if app.mode == Mode::ApiKeys {
+        return handle_api_keys_mode(app, key);
+    }
+
     // Global keys (work in any mode)
     match key.code {
         KeyCode::Char('q') if key.modifiers.is_empty() && app.mode == Mode::Normal => {
@@ -590,7 +600,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Option<Action> {
         Mode::Normal => handle_normal_mode(app, key),
         Mode::Insert => handle_insert_mode(app, key),
         Mode::Confirm => handle_confirm_mode(app, key),
-        Mode::RiskEdit => unreachable!(),
+        Mode::RiskEdit | Mode::ApiKeys => unreachable!(),
     }
 }
 
@@ -621,6 +631,13 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Option<Action> {
         KeyCode::Char('r') => {
             app.risk_edit = Some(RiskEditState::new(&app.agent_risk_params));
             app.mode = Mode::RiskEdit;
+            None
+        }
+
+        // API keys overlay
+        KeyCode::Char('a') => {
+            app.api_keys_edit = Some(ApiKeysEditState::new());
+            app.mode = Mode::ApiKeys;
             None
         }
 
@@ -1085,6 +1102,140 @@ fn handle_risk_field_edit(app: &mut App, key: KeyEvent) -> Option<Action> {
             }
             state.editing = false;
             state.input.clear();
+            state.cursor = 0;
+            None
+        }
+        KeyCode::Esc => {
+            // Cancel field edit (stay in overlay)
+            state.editing = false;
+            state.input.clear();
+            state.cursor = 0;
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Handles keys in the API keys edit overlay.
+fn handle_api_keys_mode(app: &mut App, key: KeyEvent) -> Option<Action> {
+    let state = app.api_keys_edit.as_mut()?;
+
+    if state.editing {
+        return handle_api_key_field_edit(app, key);
+    }
+
+    match key.code {
+        // Navigation
+        KeyCode::Char('j') | KeyCode::Down => {
+            if state.selected < ApiKeysEditState::FIELD_COUNT - 1 {
+                state.selected += 1;
+            }
+            None
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            state.selected = state.selected.saturating_sub(1);
+            None
+        }
+
+        // Start editing a field
+        KeyCode::Enter | KeyCode::Char('i') => {
+            state.input.clear();
+            state.cursor = 0;
+            state.editing = true;
+            None
+        }
+
+        // Save and close
+        KeyCode::Char('s') => {
+            // Collect new values
+            let values = std::array::from_fn(|i| state.fields[i].new_value.clone());
+
+            // Check: if Kraken key is set but secret is not (or vice versa)
+            let kraken_key_provided = values[1].is_some() || state.fields[1].was_set;
+            let kraken_secret_provided = values[2].is_some() || state.fields[2].was_set;
+            if kraken_key_provided != kraken_secret_provided {
+                app.show_error("Kraken API key and secret must both be set");
+                return None;
+            }
+
+            // Count unchanged keys that were already set
+            let unchanged: usize = state
+                .fields
+                .iter()
+                .filter(|f| f.was_set && f.new_value.is_none())
+                .count();
+
+            if unchanged > 0 && values.iter().all(|v| v.is_none()) {
+                app.show_error(format!("{unchanged} key(s) unchanged (already set)"));
+                app.api_keys_edit = None;
+                app.mode = Mode::Normal;
+                return None;
+            }
+
+            app.api_keys_edit = None;
+            app.mode = Mode::Normal;
+            Some(Action::SaveApiKeys { values })
+        }
+
+        // Cancel and close
+        KeyCode::Esc => {
+            app.api_keys_edit = None;
+            app.mode = Mode::Normal;
+            None
+        }
+
+        _ => None,
+    }
+}
+
+/// Handles keys when editing a field in the API keys overlay.
+fn handle_api_key_field_edit(app: &mut App, key: KeyEvent) -> Option<Action> {
+    let state = app.api_keys_edit.as_mut().expect("editing requires api_keys_edit");
+
+    match key.code {
+        KeyCode::Char(c) if !c.is_control() => {
+            state.input.insert(state.cursor, c);
+            state.cursor += c.len_utf8();
+            None
+        }
+        KeyCode::Backspace => {
+            if state.cursor > 0 {
+                state.cursor -= 1;
+                state.input.remove(state.cursor);
+            }
+            None
+        }
+        KeyCode::Delete => {
+            if state.cursor < state.input.len() {
+                state.input.remove(state.cursor);
+            }
+            None
+        }
+        KeyCode::Left => {
+            state.cursor = state.cursor.saturating_sub(1);
+            None
+        }
+        KeyCode::Right => {
+            if state.cursor < state.input.len() {
+                state.cursor += 1;
+            }
+            None
+        }
+        KeyCode::Home => {
+            state.cursor = 0;
+            None
+        }
+        KeyCode::End => {
+            state.cursor = state.input.len();
+            None
+        }
+        KeyCode::Enter => {
+            // Commit the edited value
+            let value = std::mem::take(&mut state.input);
+            if !value.is_empty() {
+                state.fields[state.selected].new_value = Some(value);
+            }
+            state.editing = false;
             state.cursor = 0;
             None
         }

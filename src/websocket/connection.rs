@@ -53,6 +53,11 @@ pub enum ConnectionCommand {
     PairUnsubscribed(String),
     /// The token was used to submit an authenticated request (e.g., order placement).
     TokenUsed,
+    /// API credentials were updated at runtime (from the API keys overlay).
+    UpdateCredentials {
+        api_key: Option<Zeroizing<String>>,
+        api_secret: Option<Zeroizing<String>>,
+    },
 }
 
 /// Why the reader loop exited.
@@ -61,6 +66,8 @@ enum DisconnectReason {
     ConnectionError,
     /// The auth token is about to expire and needs refreshing.
     TokenExpired,
+    /// API credentials were updated; reconnect with new creds.
+    CredentialsUpdated,
     /// The message channel to the main loop was closed (app shutting down).
     Shutdown,
 }
@@ -279,10 +286,10 @@ impl ConnectionManager {
             }
 
             match reason {
-                DisconnectReason::TokenExpired => {
+                DisconnectReason::TokenExpired | DisconnectReason::CredentialsUpdated => {
                     self.try_send(Message::TokenState(TokenState::Refreshing));
-                    info!("Token expiring, reconnecting with fresh token");
-                    // No backoff for planned refresh
+                    info!("Token expiring or credentials updated, reconnecting");
+                    // No backoff for planned refresh or credential update
                 }
                 DisconnectReason::ConnectionError => {
                     self.try_send(Message::Disconnected);
@@ -434,6 +441,16 @@ impl ConnectionManager {
                                 token_age_secs = token_fetched_at.elapsed().as_secs(),
                                 "token used for authenticated operation"
                             );
+                        }
+                        Some(ConnectionCommand::UpdateCredentials { api_key, api_secret }) => {
+                            if let Some(key) = api_key {
+                                self.api_key = Some(key);
+                            }
+                            if let Some(secret) = api_secret {
+                                self.api_secret = Some(secret);
+                            }
+                            info!("credentials updated, reconnecting");
+                            return DisconnectReason::CredentialsUpdated;
                         }
                         None => {
                             // Command channel closed, app is shutting down
