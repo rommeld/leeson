@@ -153,6 +153,10 @@ pub struct AgentRiskParams {
     pub trade_size_eur: Decimal,
     /// Maximum loss per trade in absolute EUR.
     pub stop_loss_eur: Decimal,
+    /// Cost in EUR per 1 million input tokens.
+    pub cost_per_1m_input_tokens: Decimal,
+    /// Cost in EUR per 1 million output tokens.
+    pub cost_per_1m_output_tokens: Decimal,
 }
 
 impl Default for AgentRiskParams {
@@ -162,6 +166,8 @@ impl Default for AgentRiskParams {
             intraday: false,
             trade_size_eur: Decimal::new(100, 0),
             stop_loss_eur: Decimal::new(20, 0),
+            cost_per_1m_input_tokens: Decimal::ZERO,
+            cost_per_1m_output_tokens: Decimal::ZERO,
         }
     }
 }
@@ -212,6 +218,16 @@ impl AgentRiskParams {
         );
         let _ = writeln!(out, "  trade_size_eur: {}", self.trade_size_eur);
         let _ = writeln!(out, "  stop_loss_eur: {}", self.stop_loss_eur);
+        let _ = writeln!(
+            out,
+            "  cost_per_1m_input_tokens: {}",
+            self.cost_per_1m_input_tokens
+        );
+        let _ = writeln!(
+            out,
+            "  cost_per_1m_output_tokens: {}",
+            self.cost_per_1m_output_tokens
+        );
         out
     }
 }
@@ -330,6 +346,8 @@ mod tests {
         assert!(!params.intraday);
         assert_eq!(params.trade_size_eur, dec!(100));
         assert_eq!(params.stop_loss_eur, dec!(20));
+        assert_eq!(params.cost_per_1m_input_tokens, Decimal::ZERO);
+        assert_eq!(params.cost_per_1m_output_tokens, Decimal::ZERO);
     }
 
     #[test]
@@ -342,6 +360,8 @@ mod tests {
             intraday: true,
             trade_size_eur: dec!(500),
             stop_loss_eur: dec!(50),
+            cost_per_1m_input_tokens: dec!(3.00),
+            cost_per_1m_output_tokens: dec!(15.00),
         };
         params.save(&path).unwrap();
 
@@ -350,6 +370,8 @@ mod tests {
         assert!(loaded.intraday);
         assert_eq!(loaded.trade_size_eur, dec!(500));
         assert_eq!(loaded.stop_loss_eur, dec!(50));
+        assert_eq!(loaded.cost_per_1m_input_tokens, dec!(3.00));
+        assert_eq!(loaded.cost_per_1m_output_tokens, dec!(15.00));
     }
 
     #[test]
@@ -367,5 +389,7 @@ mod tests {
         assert!(desc.contains("intraday: no"));
         assert!(desc.contains("trade_size_eur: 100"));
         assert!(desc.contains("stop_loss_eur: 20"));
+        assert!(desc.contains("cost_per_1m_input_tokens: 0"));
+        assert!(desc.contains("cost_per_1m_output_tokens: 0"));
     }
 }
