@@ -12,6 +12,7 @@ pub mod models;
 #[cfg(feature = "python")]
 mod python;
 pub mod risk;
+pub mod simulation;
 pub mod tls;
 pub mod tui;
 pub mod websocket;
