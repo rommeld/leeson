@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "965ce9bc68de",
+  "session_id": "a2535cdf-302d-4854-a0d9-a8f766461674",
+  "strategy": "auto-commit",
+  "created_at": "2026-02-22T12:16:27.968184Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/multi_agent/agents/execution_agent.py",
+    "agents/multi_agent/agents/ideation_agent.py",
+    "agents/multi_agent/agents/market_agent.py",
+    "agents/multi_agent/agents/risk_agent.py",
+    "agents/multi_agent/agents/user_agent.py",
+    "agents/multi_agent/bridge.py",
+    "agents/multi_agent/models.py",
+    "agents/multi_agent/state.py",
+    "src/agent.rs",
+    "src/config.rs",
+    "src/main.rs",
+    "src/tui/app.rs",
+    "src/tui/components/status_bar.rs",
+    "src/tui/event.rs"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 57,
+    "cache_creation_tokens": 77782,
+    "cache_read_tokens": 4442479,
+    "output_tokens": 4077,
+    "api_call_count": 55
+  }
+}
