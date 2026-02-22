@@ -1,0 +1,14 @@
+All done. Here's a summary of what was implemented:
+
+### Files changed
+
+| File | Changes |
+|---|---|
+| `src/risk/config.rs` | Added `AgentRiskParams` struct with `Serialize`/`Deserialize`/`Clone`/`Debug`, `Default` (10 trades/month, no intraday, 100 EUR trade size, 20 EUR stop-loss), `load()`/`save()`/`describe()` methods, and 4 unit tests |
+| `src/tui/app.rs` | Added `Mode::RiskEdit` variant, `RiskEditState` struct (selected field, editing flag, input buffer, cursor, working copy), `agent_risk_params` and `risk_edit` fields on `App` |
+| `src/tui/event.rs` | Added `Action::SaveRiskParams(AgentRiskParams)`, `r` key in `handle_normal_mode()` to open overlay, `handle_risk_edit_mode()` (j/k nav, Space toggle, Enter edit, s save, Esc cancel), `handle_risk_field_edit()` (digit/dot input, Backspace, Enter commit, Esc cancel edit), two-stage Esc handling |
+| `src/tui/ui.rs` | Added `render_risk_edit_overlay()` following existing confirm overlay pattern, called from `render()` when `Mode::RiskEdit` |
+| `src/tui/tabs/agent.rs` | Updated keybindings help to include `[r]risk` and `Mode::RiskEdit` help text |
+| `src/tui/tabs/trading_pair.rs` | Updated keybindings to show risk edit help when in `Mode::RiskEdit`, added `[r]risk` to normal mode |
+| `src/main.rs` | Loads `AgentRiskParams` from `agent_risk.json` at startup, includes `describe()` in risk limits sent on `AgentReady`, handles `Action::SaveRiskParams` to persist and re-send to all agents |
+| `Cargo.toml` | Added `tempfile` dev dependency (for round-trip test) |

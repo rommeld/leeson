@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "4619356414d0",
+  "session_id": "6b40c31e-6f8b-434e-b2b0-e3971f7b0f9c",
+  "strategy": "auto-commit",
+  "created_at": "2026-02-22T09:38:06.837814Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/main.rs",
+    "src/risk/config.rs",
+    "src/tui/app.rs",
+    "src/tui/event.rs",
+    "src/tui/tabs/agent.rs",
+    "src/tui/tabs/trading_pair.rs",
+    "src/tui/ui.rs"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 52,
+    "cache_creation_tokens": 70717,
+    "cache_read_tokens": 3421208,
+    "output_tokens": 6500,
+    "api_call_count": 50,
+    "subagent_tokens": {
+      "input_tokens": 10,
+      "cache_creation_tokens": 66830,
+      "cache_read_tokens": 253053,
+      "output_tokens": 83,
+      "api_call_count": 8
+    }
+  }
+}
