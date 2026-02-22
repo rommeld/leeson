@@ -147,16 +147,21 @@ pub fn spawn_multi_agent(
     tx: mpsc::Sender<Message>,
 ) -> crate::Result<AgentHandle> {
     let child = Command::new("uv")
-        .args(["run", "--directory", "agents", "python", "-m", "multi_agent"])
+        .args([
+            "run",
+            "--directory",
+            "agents",
+            "python",
+            "-m",
+            "multi_agent",
+        ])
         .arg(agent_index.to_string())
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()
-        .map_err(|e| {
-            crate::LeesonError::Io(format!("failed to spawn multi-agent system: {e}"))
-        })?;
+        .map_err(|e| crate::LeesonError::Io(format!("failed to spawn multi-agent system: {e}")))?;
 
     wire_agent_io(agent_index, child, tx)
 }
