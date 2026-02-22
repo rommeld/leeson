@@ -175,51 +175,123 @@ fn render_account_overview(frame: &mut Frame, area: Rect, app: &App) {
     let left_para = Paragraph::new(left_lines);
     frame.render_widget(left_para, layout[0]);
 
-    // Right column: P&L and positions
-    let pnl_today_color = if app.pnl_today >= rust_decimal::Decimal::ZERO {
-        Color::Green
-    } else {
-        Color::Red
-    };
-    let pnl_total_color = if app.pnl_total >= rust_decimal::Decimal::ZERO {
-        Color::Green
-    } else {
-        Color::Red
-    };
+    // Right column: P&L and positions (or sim stats)
+    let right_text = if app.simulation {
+        let stats = &app.sim_stats;
+        let realized_color = if stats.realized_pnl >= rust_decimal::Decimal::ZERO {
+            Color::Green
+        } else {
+            Color::Red
+        };
+        let unrealized_color = if stats.unrealized_pnl >= rust_decimal::Decimal::ZERO {
+            Color::Green
+        } else {
+            Color::Red
+        };
+        let total_pnl = stats.realized_pnl + stats.unrealized_pnl;
+        let total_color = if total_pnl >= rust_decimal::Decimal::ZERO {
+            Color::Green
+        } else {
+            Color::Red
+        };
 
-    let open_positions: usize = app.open_orders.values().map(|v| v.len()).sum();
-    let total_assets = app.asset_balances.len();
+        let session_mins = stats.session_secs / 60;
+        let session_secs = stats.session_secs % 60;
 
-    let right_text = vec![
-        Line::from(vec![
-            Span::raw("P&L Today: "),
-            Span::styled(
-                format!("${:.2}", app.pnl_today),
-                Style::default().fg(pnl_today_color),
-            ),
-        ]),
-        Line::from(vec![
-            Span::raw("P&L Total: "),
-            Span::styled(
-                format!("${:.2}", app.pnl_total),
-                Style::default().fg(pnl_total_color),
-            ),
-        ]),
-        Line::from(vec![
-            Span::raw("Open Positions: "),
-            Span::styled(
-                format!("{}", open_positions),
-                Style::default().fg(Color::White),
-            ),
-        ]),
-        Line::from(vec![
-            Span::raw("Total Assets: "),
-            Span::styled(
-                format!("{}", total_assets),
-                Style::default().fg(Color::White),
-            ),
-        ]),
-    ];
+        let mut lines = vec![
+            Line::from(vec![
+                Span::raw("Realized: "),
+                Span::styled(
+                    format!("${:+.2}", stats.realized_pnl),
+                    Style::default().fg(realized_color),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Unrealized: "),
+                Span::styled(
+                    format!("${:+.2}", stats.unrealized_pnl),
+                    Style::default().fg(unrealized_color),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Total P&L: "),
+                Span::styled(
+                    format!("${:+.2}", total_pnl),
+                    Style::default().fg(total_color),
+                ),
+            ]),
+            Line::from(vec![Span::raw(format!(
+                "Trades: {}  Session: {}m {:02}s",
+                stats.trade_count, session_mins, session_secs
+            ))]),
+        ];
+
+        // Show open positions
+        for (symbol, qty) in &stats.positions {
+            let entry = stats
+                .avg_entry_prices
+                .get(symbol)
+                .copied()
+                .unwrap_or(rust_decimal::Decimal::ZERO);
+            let side_color = if *qty > rust_decimal::Decimal::ZERO {
+                Color::Green
+            } else {
+                Color::Red
+            };
+            lines.push(Line::from(vec![
+                Span::styled(format!("{} ", symbol), Style::default().fg(Color::White)),
+                Span::styled(format!("{:+.6}", qty), Style::default().fg(side_color)),
+                Span::raw(format!(" @ {:.2}", entry)),
+            ]));
+        }
+
+        lines
+    } else {
+        let pnl_today_color = if app.pnl_today >= rust_decimal::Decimal::ZERO {
+            Color::Green
+        } else {
+            Color::Red
+        };
+        let pnl_total_color = if app.pnl_total >= rust_decimal::Decimal::ZERO {
+            Color::Green
+        } else {
+            Color::Red
+        };
+
+        let open_positions: usize = app.open_orders.values().map(|v| v.len()).sum();
+        let total_assets = app.asset_balances.len();
+
+        vec![
+            Line::from(vec![
+                Span::raw("P&L Today: "),
+                Span::styled(
+                    format!("${:.2}", app.pnl_today),
+                    Style::default().fg(pnl_today_color),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("P&L Total: "),
+                Span::styled(
+                    format!("${:.2}", app.pnl_total),
+                    Style::default().fg(pnl_total_color),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Open Positions: "),
+                Span::styled(
+                    format!("{}", open_positions),
+                    Style::default().fg(Color::White),
+                ),
+            ]),
+            Line::from(vec![
+                Span::raw("Total Assets: "),
+                Span::styled(
+                    format!("{}", total_assets),
+                    Style::default().fg(Color::White),
+                ),
+            ]),
+        ]
+    };
 
     let right_para = Paragraph::new(right_text);
     frame.render_widget(right_para, layout[1]);

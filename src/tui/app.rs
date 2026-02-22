@@ -113,6 +113,12 @@ pub struct App {
     /// State for the risk parameters edit overlay.
     pub risk_edit: Option<RiskEditState>,
 
+    // -- Simulation --
+    /// Whether the application is running in simulation mode.
+    pub simulation: bool,
+    /// Snapshot of simulation statistics for display.
+    pub sim_stats: SimulationStats,
+
     // -- Internal --
     /// Flag to signal application should quit.
     pub should_quit: bool,
@@ -177,6 +183,9 @@ impl App {
             last_heartbeat: None,
             authenticated: false,
             private_connected: false,
+
+            simulation: false,
+            sim_stats: SimulationStats::default(),
 
             should_quit: false,
         }
@@ -585,6 +594,23 @@ pub struct ErrorDisplay {
     pub message: String,
     /// When the error was shown.
     pub timestamp: Instant,
+}
+
+/// Simulation performance statistics for TUI display.
+#[derive(Clone, Debug, Default)]
+pub struct SimulationStats {
+    /// Cumulative realized P&L (after fees).
+    pub realized_pnl: Decimal,
+    /// Unrealized P&L from open positions at current market prices.
+    pub unrealized_pnl: Decimal,
+    /// Number of simulated trades executed this session.
+    pub trade_count: usize,
+    /// Net position per symbol.
+    pub positions: HashMap<String, Decimal>,
+    /// Weighted average entry price per symbol.
+    pub avg_entry_prices: HashMap<String, Decimal>,
+    /// Session duration in seconds.
+    pub session_secs: u64,
 }
 
 /// Balance for a single asset.

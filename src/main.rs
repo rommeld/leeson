@@ -14,8 +14,9 @@ use leeson::models::add_order::AddOrderRequest;
 use leeson::models::book::BookDepth;
 use leeson::risk::RiskGuard;
 use leeson::risk::config::{AgentRiskParams, RiskConfig};
+use leeson::simulation::SimulationEngine;
 use leeson::tls::build_tls_config;
-use leeson::tui::app::{Mode, PendingOrder};
+use leeson::tui::app::{Mode, PendingOrder, SimulationStats};
 use leeson::tui::{self, App, Message};
 use leeson::websocket::{
     ConnectionCommand, ConnectionManager, add_order, subscribe, subscribe_book, unsubscribe,
@@ -29,6 +30,12 @@ async fn main() -> Result<(), LeesonError> {
     // Load risk configuration (required — running without risk limits is a hard error)
     let risk_config = RiskConfig::load(Path::new("risk.json"))?;
     let mut risk_guard = RiskGuard::new(risk_config);
+
+    let mut sim_engine: Option<SimulationEngine> = if app_config.simulation {
+        Some(SimulationEngine::new())
+    } else {
+        None
+    };
 
     let has_credentials = matches!(
         (&app_config.kraken.api_key, &app_config.kraken.api_secret),
@@ -47,9 +54,11 @@ async fn main() -> Result<(), LeesonError> {
         (false, None)
     };
 
-    // Use authenticated endpoint if credentials are valid, otherwise use configured URL
-    // The balances channel requires the authenticated endpoint
-    let url = if credentials_valid {
+    // Use authenticated endpoint if credentials are valid, otherwise use configured URL.
+    // In simulation mode, always use the public endpoint (no auth needed for data-only).
+    let url = if app_config.simulation {
+        app_config.kraken.websocket_url.clone()
+    } else if credentials_valid {
         "wss://ws-auth.kraken.com/v2".to_string()
     } else {
         app_config.kraken.websocket_url.clone()
@@ -66,6 +75,7 @@ async fn main() -> Result<(), LeesonError> {
     let mut app = App::new();
     app.agent_risk_params = agent_risk_params;
     app.authenticated = credentials_valid;
+    app.simulation = app_config.simulation;
 
     // Show auth error if credentials were provided but invalid
     if let Some(error) = auth_error {
@@ -116,6 +126,18 @@ async fn main() -> Result<(), LeesonError> {
 
     // Main event loop
     loop {
+        // Snapshot simulation stats before rendering
+        if let Some(ref sim) = sim_engine {
+            app.sim_stats = SimulationStats {
+                realized_pnl: sim.realized_pnl(),
+                unrealized_pnl: sim.unrealized_pnl(&app.tickers),
+                trade_count: sim.trade_count(),
+                positions: sim.positions().clone(),
+                avg_entry_prices: sim.avg_entry_prices().clone(),
+                session_secs: sim.session_secs(),
+            };
+        }
+
         // Render UI
         terminal
             .draw(|frame| tui::render(frame, &app))
@@ -128,13 +150,20 @@ async fn main() -> Result<(), LeesonError> {
 
         // Wait for next message
         if let Some(message) = rx.recv().await {
-            // Intercept token state changes to forward to agents
+            // Intercept token state changes to forward to agents.
+            // In simulation mode, always tell agents the token is valid so
+            // they believe they can submit orders.
             let message = match message {
                 Message::TokenState(state) => {
+                    let label = if sim_engine.is_some() {
+                        "valid"
+                    } else {
+                        state.label()
+                    };
                     for handle in agents.iter().flatten() {
                         let _ = handle
                             .commands
-                            .send(AgentCommand::TokenState(state.label().to_string()));
+                            .send(AgentCommand::TokenState(label.to_string()));
                     }
                     tui::event::update(&mut app, Message::TokenState(state));
                     continue;
@@ -263,12 +292,51 @@ async fn main() -> Result<(), LeesonError> {
                         let symbol = params.symbol.clone();
                         match risk_guard.check_order(&params) {
                             Ok(RiskVerdict::Approved) => {
-                                let request = AddOrderRequest::new(params, None);
-                                let mut ws = writer.lock().await;
-                                if let Some(ref mut w) = *ws {
-                                    let _ = add_order(w, request).await;
+                                if let Some(ref mut sim) = sim_engine {
+                                    let ticker = app.tickers.get(&symbol);
+                                    let (order_resp, exec_resp) =
+                                        sim.execute_order(&params, ticker);
+                                    // Forward synthesized responses to agents
+                                    let cmd = AgentCommand::OrderResponse {
+                                        success: order_resp.success,
+                                        order_id: order_resp
+                                            .result
+                                            .as_ref()
+                                            .map(|r| r.order_id.clone()),
+                                        cl_ord_id: order_resp
+                                            .result
+                                            .as_ref()
+                                            .and_then(|r| r.cl_ord_id.clone()),
+                                        order_userref: order_resp
+                                            .result
+                                            .as_ref()
+                                            .and_then(|r| r.order_userref),
+                                        error: order_resp.error.clone(),
+                                    };
+                                    for handle in agents.iter().flatten() {
+                                        let _ = handle.commands.send(cmd.clone());
+                                    }
+                                    if let Some(ref exec) = exec_resp {
+                                        let exec_cmd =
+                                            AgentCommand::ExecutionUpdate(exec.data.clone());
+                                        for handle in agents.iter().flatten() {
+                                            let _ = handle.commands.send(exec_cmd.clone());
+                                        }
+                                    }
+                                    // Feed through TUI state update
+                                    tui::event::update(&mut app, Message::OrderPlaced(order_resp));
+                                    if let Some(exec) = exec_resp {
+                                        tui::event::update(&mut app, Message::Execution(exec));
+                                    }
                                     risk_guard.record_submission(&symbol);
-                                    let _ = cmd_tx.try_send(ConnectionCommand::TokenUsed);
+                                } else {
+                                    let request = AddOrderRequest::new(params, None);
+                                    let mut ws = writer.lock().await;
+                                    if let Some(ref mut w) = *ws {
+                                        let _ = add_order(w, request).await;
+                                        risk_guard.record_submission(&symbol);
+                                        let _ = cmd_tx.try_send(ConnectionCommand::TokenUsed);
+                                    }
                                 }
                             }
                             Ok(RiskVerdict::RequiresConfirmation { reason }) => {
@@ -288,12 +356,48 @@ async fn main() -> Result<(), LeesonError> {
                     tui::event::Action::ConfirmOrder => {
                         if let Some(pending) = app.pending_order.take() {
                             let symbol = pending.params.symbol.clone();
-                            let request = AddOrderRequest::new(pending.params, None);
-                            let mut ws = writer.lock().await;
-                            if let Some(ref mut w) = *ws {
-                                let _ = add_order(w, request).await;
+                            if let Some(ref mut sim) = sim_engine {
+                                let ticker = app.tickers.get(&symbol);
+                                let (order_resp, exec_resp) =
+                                    sim.execute_order(&pending.params, ticker);
+                                let cmd = AgentCommand::OrderResponse {
+                                    success: order_resp.success,
+                                    order_id: order_resp
+                                        .result
+                                        .as_ref()
+                                        .map(|r| r.order_id.clone()),
+                                    cl_ord_id: order_resp
+                                        .result
+                                        .as_ref()
+                                        .and_then(|r| r.cl_ord_id.clone()),
+                                    order_userref: order_resp
+                                        .result
+                                        .as_ref()
+                                        .and_then(|r| r.order_userref),
+                                    error: order_resp.error.clone(),
+                                };
+                                for handle in agents.iter().flatten() {
+                                    let _ = handle.commands.send(cmd.clone());
+                                }
+                                if let Some(ref exec) = exec_resp {
+                                    let exec_cmd = AgentCommand::ExecutionUpdate(exec.data.clone());
+                                    for handle in agents.iter().flatten() {
+                                        let _ = handle.commands.send(exec_cmd.clone());
+                                    }
+                                }
+                                tui::event::update(&mut app, Message::OrderPlaced(order_resp));
+                                if let Some(exec) = exec_resp {
+                                    tui::event::update(&mut app, Message::Execution(exec));
+                                }
                                 risk_guard.record_submission(&symbol);
-                                let _ = cmd_tx.try_send(ConnectionCommand::TokenUsed);
+                            } else {
+                                let request = AddOrderRequest::new(pending.params, None);
+                                let mut ws = writer.lock().await;
+                                if let Some(ref mut w) = *ws {
+                                    let _ = add_order(w, request).await;
+                                    risk_guard.record_submission(&symbol);
+                                    let _ = cmd_tx.try_send(ConnectionCommand::TokenUsed);
+                                }
                             }
                         }
                     }

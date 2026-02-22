@@ -17,6 +17,8 @@ const DEFAULT_WEBSOCKET_URL: &str = "wss://ws.kraken.com/v2";
 #[derive(Debug)]
 pub struct AppConfig {
     pub kraken: KrakenConfig,
+    /// When true, orders are simulated locally instead of sent to the exchange.
+    pub simulation: bool,
 }
 
 /// Kraken-specific configuration values.
@@ -73,12 +75,15 @@ pub fn fetch_config() -> crate::Result<AppConfig> {
         _ => {}
     }
 
+    let simulation = non_empty_var("LEESON_SIMULATION").is_some_and(|v| v == "true" || v == "1");
+
     Ok(AppConfig {
         kraken: KrakenConfig {
             websocket_url,
             api_key: api_key.map(Zeroizing::new),
             api_secret: api_secret.map(Zeroizing::new),
         },
+        simulation,
     })
 }
 
@@ -210,6 +215,54 @@ mod tests {
             || {
                 let err = fetch_config().unwrap_err();
                 assert!(err.to_string().contains("KRAKEN_API_KEY is missing"));
+            },
+        );
+    }
+
+    #[test]
+    fn simulation_mode_from_env() {
+        with_env(
+            &[
+                ("KRAKEN_API_KEY", None),
+                ("KRAKEN_API_SECRET", None),
+                ("KRAKEN_WEBSOCKET_URL", None),
+                ("LEESON_SIMULATION", Some("true")),
+            ],
+            || {
+                let config = fetch_config().unwrap();
+                assert!(config.simulation);
+            },
+        );
+    }
+
+    #[test]
+    fn simulation_mode_accepts_1() {
+        with_env(
+            &[
+                ("KRAKEN_API_KEY", None),
+                ("KRAKEN_API_SECRET", None),
+                ("KRAKEN_WEBSOCKET_URL", None),
+                ("LEESON_SIMULATION", Some("1")),
+            ],
+            || {
+                let config = fetch_config().unwrap();
+                assert!(config.simulation);
+            },
+        );
+    }
+
+    #[test]
+    fn simulation_mode_defaults_to_off() {
+        with_env(
+            &[
+                ("KRAKEN_API_KEY", None),
+                ("KRAKEN_API_SECRET", None),
+                ("KRAKEN_WEBSOCKET_URL", None),
+                ("LEESON_SIMULATION", None),
+            ],
+            || {
+                let config = fetch_config().unwrap();
+                assert!(!config.simulation);
             },
         );
     }

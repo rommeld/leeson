@@ -47,7 +47,32 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
         Span::raw("")
     };
 
-    let line = Line::from(vec![
+    // Simulation badge: yellow background with P&L and trade count
+    let sim_spans: Vec<Span> = if app.simulation {
+        let total_pnl = app.sim_stats.realized_pnl + app.sim_stats.unrealized_pnl;
+        let pnl_color = if total_pnl >= rust_decimal::Decimal::ZERO {
+            Color::Green
+        } else {
+            Color::Red
+        };
+        vec![
+            Span::styled(" SIM ", Style::default().fg(Color::Black).bg(Color::Yellow)),
+            Span::styled(
+                format!(" P&L:{:+.2} ", total_pnl),
+                Style::default().fg(pnl_color),
+            ),
+            Span::styled(
+                format!("#{} ", app.sim_stats.trade_count),
+                Style::default().fg(Color::White),
+            ),
+            Span::raw("│"),
+        ]
+    } else {
+        vec![]
+    };
+
+    let mut spans = sim_spans;
+    spans.extend(vec![
         Span::styled(
             format!(" {} ", app.connection_status.label()),
             Style::default().fg(status_color),
@@ -64,6 +89,8 @@ pub fn render(frame: &mut Frame, area: Rect, app: &App) {
             width = area.width.saturating_sub(45) as usize
         )),
     ]);
+
+    let line = Line::from(spans);
 
     let para = Paragraph::new(line).style(Style::default().bg(Color::DarkGray));
     frame.render_widget(para, area);
