@@ -13,7 +13,7 @@ use leeson::models::Channel;
 use leeson::models::add_order::AddOrderRequest;
 use leeson::models::book::BookDepth;
 use leeson::risk::RiskGuard;
-use leeson::risk::config::RiskConfig;
+use leeson::risk::config::{AgentRiskParams, RiskConfig};
 use leeson::tls::build_tls_config;
 use leeson::tui::app::{Mode, PendingOrder};
 use leeson::tui::{self, App, Message};
@@ -55,11 +55,16 @@ async fn main() -> Result<(), LeesonError> {
         app_config.kraken.websocket_url.clone()
     };
 
+    // Load agent risk parameters (defaults if file missing)
+    let agent_risk_path = Path::new("agent_risk.json");
+    let agent_risk_params = AgentRiskParams::load(agent_risk_path)?;
+
     // Setup terminal
     let mut terminal = tui::setup_terminal()?;
 
     // Create application state
     let mut app = App::new();
+    app.agent_risk_params = agent_risk_params;
     app.authenticated = credentials_valid;
 
     // Show auth error if credentials were provided but invalid
@@ -142,7 +147,8 @@ async fn main() -> Result<(), LeesonError> {
                 Message::AgentReady(agent_index) => {
                     app.add_agent_output(agent_index, "[agent ready]".to_string());
                     if let Some(ref handle) = agents[agent_index] {
-                        let desc = risk_guard.config().describe_limits();
+                        let mut desc = risk_guard.config().describe_limits();
+                        desc.push_str(&app.agent_risk_params.describe());
                         let _ = handle.commands.send(AgentCommand::RiskLimits(desc));
                     }
                     continue;
@@ -278,6 +284,17 @@ async fn main() -> Result<(), LeesonError> {
                     }
                     tui::event::Action::CancelOrder(_order_id) => {
                         // TODO: Implement order cancellation
+                    }
+                    tui::event::Action::SaveRiskParams(params) => {
+                        if let Err(e) = params.save(agent_risk_path) {
+                            app.show_error(format!("Failed to save risk params: {e}"));
+                        }
+                        // Re-send combined limits to all running agents
+                        let mut desc = risk_guard.config().describe_limits();
+                        desc.push_str(&params.describe());
+                        for handle in agents.iter().flatten() {
+                            let _ = handle.commands.send(AgentCommand::RiskLimits(desc.clone()));
+                        }
                     }
                 }
             }

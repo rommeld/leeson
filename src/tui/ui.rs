@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
 
-use super::app::{App, Mode, Tab};
+use super::app::{App, Mode, RiskEditState, Tab};
 use super::tabs::{agent, trading_pair};
 
 /// Renders the entire application UI.
@@ -21,6 +21,13 @@ pub fn render(frame: &mut Frame, app: &App) {
         && let Some(ref pending) = app.pending_order
     {
         render_confirm_overlay(frame, app, pending);
+    }
+
+    // Render risk parameters edit overlay
+    if app.mode == Mode::RiskEdit
+        && let Some(ref state) = app.risk_edit
+    {
+        render_risk_edit_overlay(frame, state);
     }
 }
 
@@ -91,6 +98,128 @@ fn render_confirm_overlay(frame: &mut Frame, _app: &App, pending: &super::app::P
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Yellow))
         .title(" Confirm Order ");
+
+    let paragraph = Paragraph::new(lines)
+        .block(block)
+        .wrap(Wrap { trim: false });
+
+    frame.render_widget(paragraph, dialog);
+}
+
+/// Renders the risk parameters edit overlay.
+fn render_risk_edit_overlay(frame: &mut Frame, state: &RiskEditState) {
+    let area = frame.area();
+    let dialog = centered_rect(50, 40, area);
+
+    frame.render_widget(Clear, dialog);
+
+    let mut lines = vec![
+        Line::from(Span::styled(
+            "Agent Risk Parameters",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )),
+        Line::from(""),
+    ];
+
+    for i in 0..RiskEditState::FIELD_COUNT {
+        let is_selected = i == state.selected;
+        let label = RiskEditState::field_label(i);
+
+        let value_str = if state.editing && is_selected {
+            format!("{}▏", state.input)
+        } else {
+            state.field_value(i)
+        };
+
+        let label_style = if is_selected {
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(Color::Cyan)
+        };
+
+        let value_style = if state.editing && is_selected {
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::UNDERLINED)
+        } else if is_selected {
+            Style::default().fg(Color::White)
+        } else {
+            Style::default().fg(Color::Gray)
+        };
+
+        let marker = if is_selected { "▸ " } else { "  " };
+
+        lines.push(Line::from(vec![
+            Span::styled(marker, label_style),
+            Span::styled(format!("{label}: "), label_style),
+            Span::styled(value_str, value_style),
+        ]));
+    }
+
+    lines.push(Line::from(""));
+
+    let help = if state.editing {
+        vec![
+            Span::styled(
+                "[Enter] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("confirm  "),
+            Span::styled(
+                "[Esc] ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("cancel edit"),
+        ]
+    } else {
+        vec![
+            Span::styled(
+                "[j/k] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("navigate  "),
+            Span::styled(
+                "[Space] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("toggle  "),
+            Span::styled(
+                "[Enter] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("edit  "),
+            Span::styled(
+                "[s] ",
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("save  "),
+            Span::styled(
+                "[Esc] ",
+                Style::default().fg(Color::Red).add_modifier(Modifier::BOLD),
+            ),
+            Span::raw("cancel"),
+        ]
+    };
+    lines.push(Line::from(help));
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(Color::Yellow))
+        .title(" Risk Parameters ");
 
     let paragraph = Paragraph::new(lines)
         .block(block)

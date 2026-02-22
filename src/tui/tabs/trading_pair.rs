@@ -9,7 +9,7 @@ use ratatui::{
 };
 use rust_decimal::Decimal;
 
-use crate::tui::app::{App, ChartType, Focus, OrdersView};
+use crate::tui::app::{App, ChartType, Focus, Mode, OrdersView};
 use crate::tui::components::{status_bar, tab_bar};
 
 /// Renders a trading pair tab.
@@ -700,8 +700,13 @@ fn render_orders(frame: &mut Frame, area: Rect, app: &App, symbol: &str) {
 }
 
 /// Renders the keybindings help line.
-fn render_keybindings(frame: &mut Frame, area: Rect, _app: &App) {
-    let help = "[n]ew order [c]ancel [e]dit [g]chart type [o]orders view [1-6]timeframe [Tab]switch tab [?]help [q]quit";
+fn render_keybindings(frame: &mut Frame, area: Rect, app: &App) {
+    let help = match app.mode {
+        Mode::RiskEdit => "[j/k]navigate [Space]toggle [Enter]edit [s]save [Esc]cancel",
+        _ => {
+            "[n]ew order [c]ancel [e]dit [g]chart type [o]orders view [1-6]timeframe [r]risk [Tab]switch tab [?]help [q]quit"
+        }
+    };
 
     let para = Paragraph::new(help).style(Style::default().fg(Color::DarkGray));
     frame.render_widget(para, area);

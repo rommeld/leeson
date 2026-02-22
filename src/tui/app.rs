@@ -11,6 +11,7 @@ use crate::models::candle::CandleData;
 use crate::models::execution::ExecutionData;
 use crate::models::ticker::TickerData;
 use crate::models::trade::TradeData;
+use crate::risk::config::AgentRiskParams;
 
 /// Maximum number of items to keep in history buffers.
 const MAX_HISTORY_SIZE: usize = 100;
@@ -107,6 +108,10 @@ pub struct App {
     // -- Risk State --
     /// Order pending operator confirmation.
     pub pending_order: Option<PendingOrder>,
+    /// Advisory risk parameters communicated to agents.
+    pub agent_risk_params: AgentRiskParams,
+    /// State for the risk parameters edit overlay.
+    pub risk_edit: Option<RiskEditState>,
 
     // -- Internal --
     /// Flag to signal application should quit.
@@ -164,6 +169,8 @@ impl App {
             error_message: None,
 
             pending_order: None,
+            agent_risk_params: AgentRiskParams::default(),
+            risk_edit: None,
 
             connection_status: ConnectionStatus::Disconnected,
             token_state: TokenState::Unavailable,
@@ -407,6 +414,7 @@ pub enum Mode {
     Normal,
     Insert,
     Confirm,
+    RiskEdit,
 }
 
 /// Authentication token lifecycle state.
@@ -515,6 +523,59 @@ pub struct PendingOrder {
     pub params: AddOrderParams,
     /// Human-readable reason why confirmation is required.
     pub reason: String,
+}
+
+/// State for the risk parameters edit overlay.
+#[derive(Clone, Debug)]
+pub struct RiskEditState {
+    /// Index of the currently selected field (0..4).
+    pub selected: usize,
+    /// Whether the selected numeric field is being edited.
+    pub editing: bool,
+    /// Text buffer for the field being edited.
+    pub input: String,
+    /// Cursor position within the input buffer.
+    pub cursor: usize,
+    /// Working copy of parameters (committed on save).
+    pub params: AgentRiskParams,
+}
+
+impl RiskEditState {
+    /// Number of editable fields.
+    pub const FIELD_COUNT: usize = 4;
+
+    /// Creates a new edit state from existing parameters.
+    pub fn new(params: &AgentRiskParams) -> Self {
+        Self {
+            selected: 0,
+            editing: false,
+            input: String::new(),
+            cursor: 0,
+            params: params.clone(),
+        }
+    }
+
+    /// Returns the label for the field at the given index.
+    pub fn field_label(index: usize) -> &'static str {
+        match index {
+            0 => "Trades/month",
+            1 => "Intraday",
+            2 => "Trade size (EUR)",
+            3 => "Stop-loss (EUR)",
+            _ => "",
+        }
+    }
+
+    /// Returns the display value for the field at the given index.
+    pub fn field_value(&self, index: usize) -> String {
+        match index {
+            0 => self.params.trades_per_month.to_string(),
+            1 => if self.params.intraday { "Yes" } else { "No" }.to_string(),
+            2 => self.params.trade_size_eur.to_string(),
+            3 => self.params.stop_loss_eur.to_string(),
+            _ => String::new(),
+        }
+    }
 }
 
 /// Error message with timestamp for auto-clear.
