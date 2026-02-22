@@ -1,0 +1,17 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "cf0326f50877",
+  "strategy": "auto-commit",
+  "branch": "main",
+  "checkpoints_count": 0,
+  "files_touched": null,
+  "sessions": [
+    {
+      "metadata": "/cf/0326f50877/0/metadata.json",
+      "transcript": "/cf/0326f50877/0/full.jsonl",
+      "context": "",
+      "content_hash": "/cf/0326f50877/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
