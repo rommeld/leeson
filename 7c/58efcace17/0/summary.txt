@@ -1,0 +1,13 @@
+All done. Here's a summary of the changes made to `src/main.rs`:
+
+1. **Detect missing credentials** (line 42-44): After `populate_env_from_keychain()` and `fetch_config()`, checks if any of the 3 credential env vars are empty.
+
+2. **Conditional validation** (line 53): Skips Kraken credential validation when any credentials are missing — validation will happen after the overlay is dismissed.
+
+3. **Auto-open API keys overlay** (lines 94-98): When credentials are missing, initializes the `ApiKeysEditState` and sets `Mode::ApiKeys` so the overlay appears immediately on first render.
+
+4. **Deferred spawning** (lines 112-147): Introduces `setup_complete` and `deferred_cmd_rx`. When credentials are missing, the `ConnectionManager` and agents are **not** spawned — `cmd_rx` is held in an `Option` for later use.
+
+5. **Deferred setup completion** (lines 496-547): After each event loop iteration, checks if the overlay was dismissed (`!setup_complete && app.mode != Mode::ApiKeys`). When true, re-reads credentials from keychain, validates if present, spawns the `ConnectionManager` and agents.
+
+6. **Guarded `UpdateCredentials`** (line 479): The `SaveApiKeys` handler only sends `UpdateCredentials` to the connection manager when `setup_complete` is true, avoiding sends to a manager that hasn't been spawned yet.
