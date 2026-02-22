@@ -70,7 +70,7 @@ fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &App) {
         ])
         .split(area);
 
-    let titles = [" User Agent ", " Market Agent ", " Risk & Execution "];
+    let base_titles = [" User Agent ", " Market Agent ", " Risk & Execution "];
 
     for (i, col) in columns.iter().enumerate() {
         let focus = match i {
@@ -89,13 +89,37 @@ fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(Color::DarkGray)
         };
 
+        let total = app.agent_outputs[i].len();
+        // Calculate visible height inside the block borders
+        let inner_height = col.height.saturating_sub(2) as usize;
+
+        let scroll = &app.agent_scroll[i];
+        // offset is the last visible line; first visible = offset - (height - 1)
+        let end = (scroll.offset + 1).min(total);
+        let start = end.saturating_sub(inner_height);
+
+        // Build title with scroll indicator
+        let title = if total > inner_height {
+            let at_bottom = scroll.pinned || end >= total;
+            let indicator = if at_bottom {
+                "end"
+            } else {
+                &format!("{end}/{total}")
+            };
+            format!("{}[{}] ", base_titles[i], indicator)
+        } else {
+            base_titles[i].to_string()
+        };
+
         let block = Block::default()
-            .title(titles[i])
+            .title(title)
             .borders(Borders::ALL)
             .border_style(border_style);
 
         let items: Vec<ListItem> = app.agent_outputs[i]
             .iter()
+            .skip(start)
+            .take(inner_height)
             .map(|line| ListItem::new(line.as_str()))
             .collect();
 
@@ -527,7 +551,7 @@ fn render_keybindings(frame: &mut Frame, area: Rect, app: &App) {
     let help = match app.mode {
         Mode::Insert => "[Esc]normal [Enter]send to Agent 1",
         Mode::Normal => {
-            "[Tab]switch tab [Space]toggle pair [i]Agent 1 input [1-3]focus agent [r]risk [a]api keys [?]help [q]quit"
+            "[Tab]switch tab [Space]toggle pair [i]Agent 1 input [1-3]focus agent [j/k]scroll [g/G]top/bottom [r]risk [a]api keys [q]quit"
         }
         Mode::Confirm => "[y]yes [n]no",
         Mode::RiskEdit => "[j/k]navigate [Space]toggle [Enter]edit [s]save [Esc]cancel",

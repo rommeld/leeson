@@ -668,18 +668,50 @@ fn handle_agent_tab_keys(app: &mut App, key: KeyEvent) -> Option<Action> {
             None
         }
 
-        // Pair selector navigation
+        // Scroll / navigation with j/k
         KeyCode::Char('j') | KeyCode::Down => {
-            if app.focus == Focus::PairSelector
-                && app.pair_selector_index < app.available_pairs.len().saturating_sub(1)
-            {
-                app.pair_selector_index += 1;
+            match app.focus {
+                Focus::PairSelector => {
+                    if app.pair_selector_index < app.available_pairs.len().saturating_sub(1) {
+                        app.pair_selector_index += 1;
+                    }
+                }
+                Focus::AgentOutput1 => app.scroll_agent_down(0),
+                Focus::AgentOutput2 => app.scroll_agent_down(1),
+                Focus::AgentOutput3 => app.scroll_agent_down(2),
+                _ => {}
             }
             None
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            if app.focus == Focus::PairSelector {
-                app.pair_selector_index = app.pair_selector_index.saturating_sub(1);
+            match app.focus {
+                Focus::PairSelector => {
+                    app.pair_selector_index = app.pair_selector_index.saturating_sub(1);
+                }
+                Focus::AgentOutput1 => app.scroll_agent_up(0),
+                Focus::AgentOutput2 => app.scroll_agent_up(1),
+                Focus::AgentOutput3 => app.scroll_agent_up(2),
+                _ => {}
+            }
+            None
+        }
+
+        // Jump to top/bottom of agent output
+        KeyCode::Char('g') => {
+            match app.focus {
+                Focus::AgentOutput1 => app.scroll_agent_top(0),
+                Focus::AgentOutput2 => app.scroll_agent_top(1),
+                Focus::AgentOutput3 => app.scroll_agent_top(2),
+                _ => {}
+            }
+            None
+        }
+        KeyCode::Char('G') => {
+            match app.focus {
+                Focus::AgentOutput1 => app.scroll_agent_bottom(0),
+                Focus::AgentOutput2 => app.scroll_agent_bottom(1),
+                Focus::AgentOutput3 => app.scroll_agent_bottom(2),
+                _ => {}
             }
             None
         }
@@ -1190,7 +1222,10 @@ fn handle_api_keys_mode(app: &mut App, key: KeyEvent) -> Option<Action> {
 
 /// Handles keys when editing a field in the API keys overlay.
 fn handle_api_key_field_edit(app: &mut App, key: KeyEvent) -> Option<Action> {
-    let state = app.api_keys_edit.as_mut().expect("editing requires api_keys_edit");
+    let state = app
+        .api_keys_edit
+        .as_mut()
+        .expect("editing requires api_keys_edit");
 
     match key.code {
         KeyCode::Char(c) if !c.is_control() => {

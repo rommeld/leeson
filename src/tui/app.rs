@@ -40,6 +40,8 @@ pub struct App {
     // -- Agent State --
     /// Output streams for three agent panels.
     pub agent_outputs: [VecDeque<String>; 3],
+    /// Scroll state for each agent output panel.
+    pub agent_scroll: [ScrollState; 3],
     /// Current text in the agent input field.
     pub agent_input: String,
     /// Cursor position in the agent input field.
@@ -153,6 +155,7 @@ impl App {
                 VecDeque::with_capacity(MAX_AGENT_OUTPUT_LINES),
                 VecDeque::with_capacity(MAX_AGENT_OUTPUT_LINES),
             ],
+            agent_scroll: [ScrollState::default(); 3],
             agent_input: String::new(),
             agent_input_cursor: 0,
 
@@ -264,10 +267,65 @@ impl App {
     pub fn add_agent_output(&mut self, agent_index: usize, line: String) {
         if agent_index < 3 {
             let output = &mut self.agent_outputs[agent_index];
-            if output.len() >= MAX_AGENT_OUTPUT_LINES {
+            let was_at_max = output.len() >= MAX_AGENT_OUTPUT_LINES;
+            if was_at_max {
                 output.pop_front();
+                // Adjust scroll offset when oldest line is removed
+                let scroll = &mut self.agent_scroll[agent_index];
+                scroll.offset = scroll.offset.saturating_sub(1);
             }
             output.push_back(line);
+
+            // Auto-scroll to bottom when pinned
+            let scroll = &mut self.agent_scroll[agent_index];
+            if scroll.pinned {
+                scroll.offset = output.len().saturating_sub(1);
+            }
+        }
+    }
+
+    /// Scrolls an agent output panel up by one line.
+    pub fn scroll_agent_up(&mut self, agent_index: usize) {
+        if agent_index < 3 {
+            let scroll = &mut self.agent_scroll[agent_index];
+            if scroll.offset > 0 {
+                scroll.offset -= 1;
+                scroll.pinned = false;
+            }
+        }
+    }
+
+    /// Scrolls an agent output panel down by one line.
+    pub fn scroll_agent_down(&mut self, agent_index: usize) {
+        if agent_index < 3 {
+            let total = self.agent_outputs[agent_index].len();
+            let scroll = &mut self.agent_scroll[agent_index];
+            if scroll.offset < total.saturating_sub(1) {
+                scroll.offset += 1;
+            }
+            // Re-pin when scrolled to (near) the bottom
+            if scroll.offset >= total.saturating_sub(1) {
+                scroll.pinned = true;
+            }
+        }
+    }
+
+    /// Scrolls an agent output panel to the top.
+    pub fn scroll_agent_top(&mut self, agent_index: usize) {
+        if agent_index < 3 {
+            let scroll = &mut self.agent_scroll[agent_index];
+            scroll.offset = 0;
+            scroll.pinned = false;
+        }
+    }
+
+    /// Scrolls an agent output panel to the bottom and re-pins.
+    pub fn scroll_agent_bottom(&mut self, agent_index: usize) {
+        if agent_index < 3 {
+            let total = self.agent_outputs[agent_index].len();
+            let scroll = &mut self.agent_scroll[agent_index];
+            scroll.offset = total.saturating_sub(1);
+            scroll.pinned = true;
         }
     }
 
@@ -643,9 +701,7 @@ impl ApiKeysEditState {
     /// Returns the display label for the field at the given index.
     pub fn field_label(index: usize) -> &'static str {
         use crate::credentials::CredentialKey;
-        CredentialKey::ALL
-            .get(index)
-            .map_or("", |k| k.label())
+        CredentialKey::ALL.get(index).map_or("", |k| k.label())
     }
 
     /// Returns a status string for the field at the given index.
@@ -742,6 +798,24 @@ pub struct SimulationStats {
     pub avg_entry_prices: HashMap<String, Decimal>,
     /// Session duration in seconds.
     pub session_secs: u64,
+}
+
+/// Scroll state for a text output panel.
+#[derive(Clone, Copy, Debug)]
+pub struct ScrollState {
+    /// Index of the last visible line (bottom of viewport).
+    pub offset: usize,
+    /// Whether the view is pinned to the bottom (auto-scrolls on new content).
+    pub pinned: bool,
+}
+
+impl Default for ScrollState {
+    fn default() -> Self {
+        Self {
+            offset: 0,
+            pinned: true,
+        }
+    }
 }
 
 /// Balance for a single asset.
