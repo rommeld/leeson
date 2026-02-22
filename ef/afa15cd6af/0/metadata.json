@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "efafa15cd6af",
+  "session_id": "8521a13d-94ae-45b6-9d9b-27861dd6962d",
+  "strategy": "auto-commit",
+  "created_at": "2026-02-22T09:11:43.961737Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/leeson_agent.py",
+    "src/agent.rs",
+    "src/main.rs",
+    "src/models/balance.rs",
+    "src/models/execution.rs",
+    "src/models/ticker.rs",
+    "src/models/trade.rs",
+    "src/tui/event.rs"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 41,
+    "cache_creation_tokens": 60051,
+    "cache_read_tokens": 2318995,
+    "output_tokens": 5655,
+    "api_call_count": 39
+  }
+}

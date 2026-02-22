@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "efafa15cd6af",
+  "strategy": "auto-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/leeson_agent.py",
+    "src/agent.rs",
+    "src/main.rs",
+    "src/models/balance.rs",
+    "src/models/execution.rs",
+    "src/models/ticker.rs",
+    "src/models/trade.rs",
+    "src/tui/event.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ef/afa15cd6af/0/metadata.json",
+      "transcript": "/ef/afa15cd6af/0/full.jsonl",
+      "context": "",
+      "content_hash": "/ef/afa15cd6af/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 41,
+    "cache_creation_tokens": 60051,
+    "cache_read_tokens": 2318995,
+    "output_tokens": 5655,
+    "api_call_count": 39
+  }
+}

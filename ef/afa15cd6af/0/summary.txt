@@ -1,0 +1,32 @@
+All clean. Here's a summary of what was implemented:
+
+### Changes Made
+
+**1. Model types — added `Serialize`** (4 files)
+- `src/models/execution.rs` — `ExecutionData`, `Fee`, `Triggers`, `Contingent`
+- `src/models/ticker.rs` — `TickerData`
+- `src/models/trade.rs` — `TradeData`
+- `src/models/balance.rs` — `BalanceData`, `WalletBalance`
+
+**2. Agent protocol — `src/agent.rs`**
+- Replaced `OrderResult` variant with structured `OrderResponse` (success, order_id, cl_ord_id, order_userref, error)
+- Added `ExecutionUpdate`, `TickerUpdate`, `TradeUpdate`, `BalanceUpdate` variants to both `AgentCommand` and `TuiToAgent`
+- Added `cl_ord_id` field to `AgentToTui::PlaceOrder`
+- Derived `Clone` on `AgentCommand` for multi-agent forwarding
+- Updated `spawn_stdin_writer` to handle all new variants
+
+**3. Order pipeline — `src/tui/event.rs`**
+- Added `cl_ord_id` field to `Message::AgentOrderRequest`
+- Threaded `cl_ord_id` through to `AddOrderBuilder` via `.with_cl_ord_id()`
+
+**4. Data forwarding — `src/main.rs`**
+- Added intercepts that forward Execution, Balance, Trade, OrderPlaced, and Ticker data to all agents
+- Ticker updates are throttled to max once per 5 seconds per symbol
+- All messages pass through to the TUI unchanged
+
+**5. Python agent — `agents/leeson_agent.py`**
+- Added callbacks: `on_execution`, `on_ticker`, `on_trade`, `on_balance`, `on_order_response`, `on_risk_limits`, `on_token_state`
+- Added `place_order()` outbound method with `cl_ord_id` support
+- Updated `run()` dispatch loop to route all new message types
+
+**Verification:** 150 tests pass, clippy clean, fmt clean.
