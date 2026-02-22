@@ -1,0 +1,3 @@
+The environment variable is **`FIREWORKS_API_KEY`**.
+
+It's used in `agents/multi_agent/llm.py` via the `FireworksProvider()` from pydantic-ai, which reads it automatically.
