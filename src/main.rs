@@ -142,7 +142,7 @@ async fn main() -> Result<(), LeesonError> {
                 other => other,
             };
 
-            // Intercept AgentReady to send risk limits (needs risk_guard access)
+            // Intercept AgentReady to send risk limits and active pairs
             let message = match message {
                 Message::AgentReady(agent_index) => {
                     app.add_agent_output(agent_index, "[agent ready]".to_string());
@@ -150,6 +150,11 @@ async fn main() -> Result<(), LeesonError> {
                         let mut desc = risk_guard.config().describe_limits();
                         desc.push_str(&app.agent_risk_params.describe());
                         let _ = handle.commands.send(AgentCommand::RiskLimits(desc));
+                        if !app.selected_pairs.is_empty() {
+                            let _ = handle
+                                .commands
+                                .send(AgentCommand::ActivePairs(app.selected_pairs.clone()));
+                        }
                     }
                     continue;
                 }
@@ -218,11 +223,21 @@ async fn main() -> Result<(), LeesonError> {
                         if let Err(e) = cmd_tx.try_send(ConnectionCommand::PairSubscribed(symbol)) {
                             tracing::warn!("command channel full, dropping PairSubscribed: {e}");
                         }
+                        // Forward updated active pairs to all agents
+                        let cmd = AgentCommand::ActivePairs(app.selected_pairs.clone());
+                        for handle in agents.iter().flatten() {
+                            let _ = handle.commands.send(cmd.clone());
+                        }
                     }
                     tui::event::Action::UnsubscribePair(symbol) => {
                         if let Err(e) = cmd_tx.try_send(ConnectionCommand::PairUnsubscribed(symbol))
                         {
                             tracing::warn!("command channel full, dropping PairUnsubscribed: {e}");
+                        }
+                        // Forward updated active pairs to all agents
+                        let cmd = AgentCommand::ActivePairs(app.selected_pairs.clone());
+                        for handle in agents.iter().flatten() {
+                            let _ = handle.commands.send(cmd.clone());
                         }
                     }
                     tui::event::Action::ResyncBook(symbol) => {

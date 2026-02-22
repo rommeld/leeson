@@ -163,6 +163,13 @@ async def _route_stdin_messages(
                         asset=asset, balance=str(balance)
                     )
 
+            elif msg_type == "active_pairs":
+                state.active_pairs = msg.get("pairs", [])
+                output_to_panel(
+                    0,
+                    f"[system] Active pairs: {', '.join(state.active_pairs) or 'none'}",
+                )
+
             elif msg_type == "risk_limits":
                 state.risk_limits = msg.get("description", "")
                 output_to_panel(2, f"[risk] Limits updated: {state.risk_limits}")
