@@ -1,0 +1,21 @@
+All done. Here's a summary of what was implemented:
+
+## Simulation Mode Implementation
+
+**7 files modified/created:**
+
+| File | Change |
+|---|---|
+| `src/config.rs` | Added `simulation: bool` to `AppConfig`, reads `LEESON_SIMULATION` env var (`"true"` or `"1"`) |
+| `src/simulation.rs` | **New** — `SimulationEngine` with fill logic, position tracking, weighted avg entry prices, realized/unrealized P&L, fee calculation (0.26% taker rate) |
+| `src/lib.rs` | Registered `pub mod simulation;` |
+| `src/tui/app.rs` | Added `simulation: bool`, `sim_stats: SimulationStats` to `App`; new `SimulationStats` struct |
+| `src/main.rs` | Wired sim engine — intercepts `SubmitOrder`/`ConfirmOrder`, synthesizes `AddOrderResponse` + `ExecutionUpdateResponse` to agents, overrides URL to public endpoint, tells agents token is "valid" |
+| `src/tui/components/status_bar.rs` | Yellow `SIM` badge with total P&L and trade count |
+| `src/tui/tabs/agent.rs` | Account overview panel shows realized/unrealized/total P&L, trade count, session duration, and open positions with entry prices |
+
+**16 new simulation tests** covering: fill price selection (market/limit, buy/sell, marketable/non-marketable), fee calculation, position tracking with weighted averaging, P&L on partial/full close, position crossing zero, unrealized P&L, missing ticker error, monotonic order IDs.
+
+**3 new config tests** for the `LEESON_SIMULATION` env var.
+
+**Usage:** `LEESON_SIMULATION=true cargo run`

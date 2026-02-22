@@ -1,0 +1,128 @@
+Implement the following plan:
+
+# Simulation Mode Implementation Plan
+
+## Context
+
+The trading agents currently operate against the live Kraken exchange. To test agent behavior against real market conditions without financial risk, we need a simulation mode that intercepts orders at the Rust layer, simulates execution using live bid/ask data, and tracks performance — all while keeping agents completely unaware they're in a simulation.
+
+## Approach
+
+Intercept orders in `main.rs` at the `Action::SubmitOrder` / `Action::ConfirmOrder` handlers. Instead of sending to the WebSocket, the simulation engine fills orders using the current ticker data and synthesizes the same `OrderResponse` + `ExecutionUpdate` messages the agents expect from a real exchange.
+
+## Files to Modify
+
+| File | Action |
+|---|---|
+| `src/config.rs` | Add `simulation: bool` to `AppConfig` |
+| `src/simulation.rs` | **New** — `SimulationEngine` with fill logic + P&L tracking |
+| `src/lib.rs` | Register `pub mod simulation;` |
+| `src/tui/app.rs` | Add `simulation: bool`, `SimulationStats` struct + field |
+| `src/main.rs` | Wire sim engine, intercept orders, snapshot stats, override URL/token state |
+| `src/tui/components/status_bar.rs` | Show `SIM` badge + P&L |
+| `src/tui/tabs/agent.rs` | Show sim metrics in account overview panel |
+
+## Step-by-step
+
+### Step 1: Configuration (`src/config.rs`)
+
+Add `simulation: bool` to `AppConfig`. Read `LEESON_SIMULATION` env var (`"true"` or `"1"` activates). Usage: `LEESON_SIMULATION=true cargo run`.
+
+### Step 2: Simulation Engine (`src/simulation.rs` — new file)
+
+**`SimulationEngine`** struct with:
+- `next_order_id: u64` — monotonic counter for `SIM-000001` style IDs
+- `positions: HashMap<String, Decimal>` — net position per symbol (positive=long, negative=short)
+- `avg_entry_prices: HashMap<String, Decimal>` — weighted average entry price
+- `trade_history: Vec<SimulatedFill>` — completed fills
+- `realized_pnl: Decimal` — cumulative closed P&L
+- `fee_rate: Decimal` — 0.0026 (Kraken taker fee 0.26%)
+- `session_start: Instant`
+
+**`SimulatedFill`** struct: order_id, symbol, side, qty, fill_price, fee, realized_pnl, timestamp
+
+**Key method: `execute_order(&mut self, params: &AddOrderParams, ticker: Option<&TickerData>) -> (AddOrderResponse, ExecutionUpdateResponse)`**
+
+Fill logic:
+- Market buy → fills at `ticker.ask`
+- Market sell → fills at `ticker.bid`
+- Limit buy → fills at `min(limit_price, ask)` if marketable, else fills at limit_price
+- Limit sell → fills at `max(limit_price, bid)` if marketable, else fills at limit_price
+- No ticker data → returns failed response with error string
+
+Position tracking:
+- Buying increases position, updates weighted avg entry price
+- Selling decreases position, computes realized P&L as `(fill_price - avg_entry) * qty_closed` for longs
+- When position crosses zero (long→short or vice versa), close existing and open new
+
+Fee: `qty * fill_price * fee_rate`, deducted from realized P&L
+
+Returns synthesized `AddOrderResponse` (success=true, order_id=SIM-xxx) and `ExecutionUpdateResponse` (status="filled", with all required fields) — identical shape to real exchange responses.
+
+**Query methods**: `realized_pnl()`, `unrealized_pnl(&tickers)`, `positions()`, `trade_history()`, `trade_count()`, `session_duration()`
+
+Unit tests for: fill price selection, fee calc, position averaging, P&L on partial/full close, missing ticker error.
+
+### Step 3: Register module (`src/lib.rs`)
+
+Add `pub mod simulation;` between `risk` and `tls`.
+
+### Step 4: App state (`src/tui/app.rs`)
+
+Add to `App`:
+```rust
+pub simulation: bool,        // initialized to false in new()
+pub sim_stats: SimulationStats,  // initialized to Default
+```
+
+New struct:
+```rust
+pub struct SimulationStats {
+    pub realized_pnl: Decimal,
+    pub unrealized_pnl: Decimal,
+    pub trade_count: usize,
+    pub positions: HashMap<String, Decimal>,
+    pub session_secs: u64,
+}
+```
+
+### Step 5: Main loop wiring (`src/main.rs`)
+
+1. **Create sim engine** after risk_guard: `let mut sim_engine = app_config.simulation.then(SimulationEngine::new);`
+2. **Set app flag**: `app.simulation = app_config.simulation;`
+3. **Override URL**: In simulation mode, always use public endpoint (skip auth endpoint even if credentials exist)
+4. **Override token state**: When sim active, tell agents token is `"valid"` regardless of actual state
+5. **`Action::SubmitOrder`**: If `sim_engine.is_some()`, call `sim.execute_order(params, ticker)` → send synthesized `AgentCommand::OrderResponse` + `AgentCommand::ExecutionUpdate` to agents → also feed through `tui::event::update` for TUI state. Else: existing WebSocket code path.
+6. **`Action::ConfirmOrder`**: Same branching pattern.
+7. **Stats snapshot**: Before each frame render, if sim active: `app.sim_stats = SimulationStats { ... }` from engine.
+
+### Step 6: TUI display
+
+**Status bar** (`src/tui/components/status_bar.rs`):
+- When `app.simulation`, prepend yellow-background `SIM` badge with total P&L and trade count before the connection status span.
+
+**Agent tab** (`src/tui/tabs/agent.rs`):
+- In the account overview panel (right side), when `app.simulation`, show:
+  - Realized P&L (green/red)
+  - Unrealized P&L (green/red)
+  - Total P&L
+  - Trade count
+  - Session duration
+  - Open positions with symbol + qty + entry price
+
+## Verification
+
+1. `cargo build` — must compile without errors
+2. `cargo test` — all existing tests pass
+3. `cargo test simulation` — new simulation engine unit tests pass
+4. `LEESON_SIMULATION=true cargo run` — launches in sim mode:
+   - Status bar shows yellow `SIM` badge
+   - Subscribe to a trading pair
+   - Agents receive ticker data and generate trade ideas
+   - When agent places an order, it gets a simulated fill response
+   - TUI shows simulated P&L updating as market moves
+   - No orders appear on the exchange
+5. `cargo run` (without env var) — normal live behavior, no simulation code path touched
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/denny/.claude/projects/-Users-denny-Documents-repos-leeson/96ef8dc5-1e8e-45b9-9a6d-bb0c786fcade.jsonl
