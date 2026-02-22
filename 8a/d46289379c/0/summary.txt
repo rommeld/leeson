@@ -1,0 +1,1 @@
+Done. The `__pycache__/` pattern was already in `.gitignore`, but 13 `.pyc` files were being tracked because they were committed before the rule existed. I've removed them from git tracking with `git rm --cached` — the files still exist on disk but git will now ignore them going forward.

@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "8ad46289379c",
+  "session_id": "17aa04d7-0a82-4246-a521-b7946298f2fe",
+  "strategy": "auto-commit",
+  "created_at": "2026-02-22T15:29:32.918161Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/multi_agent/__pycache__/__init__.cpython-314.pyc",
+    "agents/multi_agent/__pycache__/__main__.cpython-314.pyc",
+    "agents/multi_agent/__pycache__/bridge.cpython-314.pyc",
+    "agents/multi_agent/__pycache__/bus.cpython-314.pyc",
+    "agents/multi_agent/__pycache__/llm.cpython-314.pyc",
+    "agents/multi_agent/__pycache__/models.cpython-314.pyc",
+    "agents/multi_agent/__pycache__/orchestrator.cpython-314.pyc",
+    "agents/multi_agent/__pycache__/state.cpython-314.pyc",
+    "agents/multi_agent/agents/__pycache__/__init__.cpython-314.pyc",
+    "agents/multi_agent/agents/__pycache__/execution_agent.cpython-314.pyc",
+    "agents/multi_agent/agents/__pycache__/market_agent.cpython-314.pyc",
+    "agents/multi_agent/agents/__pycache__/risk_agent.cpython-314.pyc",
+    "agents/multi_agent/agents/__pycache__/user_agent.cpython-314.pyc"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "9d7bc1c4-cdfc-4c99-837a-fbc97ceebe8c",
+  "checkpoint_transcript_start": 5,
+  "transcript_lines_at_start": 5,
+  "token_usage": {
+    "input_tokens": 7,
+    "cache_creation_tokens": 4991,
+    "cache_read_tokens": 110371,
+    "output_tokens": 439,
+    "api_call_count": 5
+  }
+}
