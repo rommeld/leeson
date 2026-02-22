@@ -1,0 +1,275 @@
+Implement the following plan:
+
+# Multi-Agent Trading System
+
+## Context
+
+The Leeson project currently spawns a single echo agent (`agents/agent1.py`) as a Python subprocess. The Rust TUI communicates with it via JSON-lines over stdin/stdout. We are building four AI-powered trading agents using Pydantic-AI and Fireworks AI API to replace this echo agent with a sophisticated multi-agent trading system. The agents run concurrently in a single subprocess, communicating with each other via async message queues and with the Rust TUI via the existing JSON-lines protocol.
+
+## Architecture
+
+```
+Rust TUI ──(stdin/stdout JSON-lines)──> Python subprocess
+                                              │
+                                        ┌─────┴──────┐
+                                        │ main.py     │
+                                        │ (router)    │
+                                        └─────┬──────┘
+                              ┌───────────────┼───────────────┐
+                              │               │               │
+                    ┌─────────▼──┐  ┌────────▼───┐  ┌───────▼────────┐
+                    │ User Agent │  │Market Agent│  │Risk + Execution│
+                    │ (panel 0)  │  │ (panel 1)  │  │   (panel 2)    │
+                    └────────────┘  └────────────┘  └────────────────┘
+                              │               │               │
+                              └───────────────┴───────────────┘
+                                    AgentBus (async queues)
+```
+
+**Panel assignment** (TUI has 3 hardcoded panels in `src/tui/app.rs:42`):
+- Panel 0: User Agent (interactive, receives typed input)
+- Panel 1: Market Agent (analysis output)
+- Panel 2: Risk & Execution Agents (shared, prefixed `[risk]`/`[exec]`)
+
+**Communication flow:**
+1. User → User Agent: operator types in TUI
+2. User Agent → Market Agent: forwards analysis requests
+3. Market Agent → Risk Agent: sends trade ideas with probability scores
+4. Risk Agent ↔ Market Agent: consultation on positions
+5. Risk Agent → Execution Agent: approved, sized orders
+6. Execution Agent → Rust TUI: `place_order` JSON messages
+7. Rust TUI → Execution Agent: order responses, execution updates
+
+## File Structure
+
+```
+agents/
+  leeson_agent.py                   # UNCHANGED
+  agent1.py                         # UNCHANGED
+  pyproject.toml                    # NEW - uv project for agent deps
+  multi_agent/
+    __init__.py                     # Package marker
+    __main__.py                     # Entrypoint (asyncio.run)
+    bridge.py                       # Sync stdin → async queue adapter
+    bus.py                          # Inter-agent async message routing
+    models.py                       # Pydantic models + AgentDeps
+    state.py                        # Shared mutable state
+    llm.py                          # Fireworks AI model factory
+    orchestrator.py                 # Main event loop, message routing
+    agents/
+      __init__.py
+      user_agent.py                 # Agent 1: operator interface
+      market_agent.py               # Agent 2: market analysis
+      risk_agent.py                 # Agent 3: risk gatekeeper
+      execution_agent.py            # Agent 4: order execution
+```
+
+## Rust-Side Changes (minimal)
+
+1. **`src/main.rs:103`** — change spawn path:
+   ```rust
+   // Before:
+   match spawn_agent(0, "agents/agent1.py", tx.clone()) {
+   // After:
+   match spawn_agent(0, "agents/multi_agent/__main__.py", tx.clone()) {
+   ```
+
+2. **`src/tui/tabs/agent.rs:73`** — update panel labels:
+   ```rust
+   // Before:
+   let titles = [" Agent 1 (Interactive) ", " Agent 2 ", " Agent 3 "];
+   // After:
+   let titles = [" User Agent ", " Market Agent ", " Risk & Execution "];
+   ```
+
+No protocol changes needed — the existing JSON-lines protocol supports everything.
+
+## Dependencies (`agents/pyproject.toml`)
+
+```toml
+[project]
+name = "leeson-agents"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic-ai>=0.2",
+    "pydantic>=2.0",
+]
+```
+
+Initialize with: `cd agents && uv init --name leeson-agents && uv add pydantic-ai pydantic`
+
+Fireworks support is built into pydantic-ai via `FireworksProvider` — no extra install needed. Set `FIREWORKS_API_KEY` env var.
+
+## Key Components
+
+### bridge.py — Sync/Async Adapter
+- Background `threading.Thread` reads stdin line-by-line (blocking)
+- Pushes parsed JSON dicts into `asyncio.Queue` via `run_coroutine_threadsafe`
+- `send_to_tui()` writes JSON-lines to stdout (thread-safe via GIL + flush)
+
+### bus.py — Inter-Agent Message Bus
+- Per-agent `asyncio.Queue[AgentMessage]` for each of the 4 roles
+- `send(to, message)`, `recv(role)`, `broadcast(message, exclude)`
+- Typed messages ensure agents only process what they understand
+
+### models.py — Pydantic Message Types
+
+| Message | From | To | Purpose |
+|---------|------|----|---------|
+| `UserRequest` | User | Market | Forward operator's analysis request |
+| `TradeIdea` | Market | Risk | Proposed trade with probability score |
+| `ConsultMarket` | Risk | Market | Ask about existing position |
+| `MarketAnalysis` | Market | Risk | Response to consultation |
+| `ApprovedOrder` | Risk | Execution | Sized order ready for placement |
+| `ClosePosition` | Risk | Execution | Close an existing position |
+| `OrderPlaced` | Execution | Risk+Market | Order result notification |
+| `OrderFilled` | Bridge | Risk | Execution update from exchange |
+| `TickerBroadcast` | Bridge | Market | Price update for active pairs |
+
+Plus `AgentDeps` dataclass injected into all agents:
+```python
+@dataclass
+class AgentDeps:
+    state: SharedState
+    bus: AgentBus
+    output_panel: int
+```
+
+### state.py — Shared State
+- `tickers: dict[str, TickerSnapshot]` — latest prices per symbol
+- `positions: dict[str, Position]` — tracked open positions with PnL
+- `balances: dict[str, BalanceInfo]` — account balances
+- `risk_limits: str` — risk config description from Rust
+- `active_pairs: list[str]` — pairs user selected for trading
+- `token_state: str` — whether orders can be submitted
+
+### llm.py — Fireworks Model Factory
+```python
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.fireworks import FireworksProvider
+
+def create_model(model_name="accounts/fireworks/models/minimax-m2p5"):
+    return OpenAIChatModel(model_name, provider=FireworksProvider())
+```
+Uses `FIREWORKS_API_KEY` env var automatically. MiniMax M2.5 (228.7B MoE, 196k context) is SOTA for agentic tool use and function calling. Pricing: $0.30/M input, $0.03/M cached input (90% off!), $1.20/M output. Prompt caching is automatic on Fireworks — static system prompt prefixes get cached.
+
+### Agent Definitions
+
+Each agent uses:
+- `Agent(model=create_model(), deps_type=AgentDeps, system_prompt=...)` — static persona (cached by Fireworks)
+- `@agent.instructions` — dynamic context injection (market data, risk limits, positions)
+- `@agent.tool` — tools with `RunContext[AgentDeps]` for bus/state access
+- `message_history` — conversation continuity across runs (truncated at 30 messages)
+
+**User Agent** (`user_agent.py`):
+- System prompt: concise operator interface, never makes trading decisions
+- Tools: `forward_to_market_agent`, `update_trading_pairs`, `get_system_status`
+- Dynamic context: current risk limits, active pairs, token state
+
+**Market Agent** (`market_agent.py`):
+- System prompt: experienced creative trader, technical + microstructure analysis, probability calibration
+- Tools: `send_trade_idea`, `respond_to_consultation`, `get_ticker`
+- Dynamic context: all current ticker data for active pairs
+- Triggered by: user requests, ticker updates (for active pairs), position consultations
+
+**Risk Agent** (`risk_agent.py`):
+- System prompt: conservative gatekeeper, never exceeds limits, 2% loss cut rule
+- Tools: `approve_order`, `reject_trade_idea`, `consult_market_agent`, `close_position`, `get_position_summary`
+- Dynamic context: risk limits, all positions with PnL, token state
+- Periodic monitoring: every 30 seconds, reviews all open positions
+
+**Execution Agent** (`execution_agent.py`):
+- System prompt: execute exactly as specified, never modify parameters
+- Tools: `place_order` (sends to TUI via `send_to_tui`), `report_order_result`
+- Stateless — no message history needed
+
+### orchestrator.py — Main Router
+
+The router reads from the stdin bridge and dispatches to agents:
+
+| TUI Message | Routed To |
+|-------------|-----------|
+| `user_message` | User Agent via bus |
+| `ticker_update` | Update `state.tickers`, forward to Market if active pair |
+| `execution_update` | Track position in state, notify Risk Agent |
+| `order_response` | Notify Execution Agent |
+| `balance_update` | Update `state.balances` |
+| `risk_limits` | Store in `state.risk_limits` |
+| `token_state` | Store in `state.token_state` |
+| `shutdown` | Set `state.shutting_down`, cancel all tasks |
+
+Runs 6 concurrent `asyncio.Task`s:
+1. `route_stdin_messages` — stdin bridge → agent bus
+2. `run_user_agent_loop` — process User Agent queue
+3. `run_market_agent_loop` — process Market Agent queue
+4. `run_risk_agent_loop` — process Risk Agent queue
+5. `run_execution_agent_loop` — process Execution Agent queue
+6. `run_risk_monitor` — periodic position review (every 30s)
+
+### Rate Limiting for Market Agent
+To avoid excessive Fireworks API calls, only forward ticker updates to Market Agent when price changes meaningfully (>0.1% from last analyzed price). This is checked in the router before dispatching.
+
+## Implementation Order
+
+### Step 1: Project setup
+- Create `agents/pyproject.toml`, run `uv init` and `uv add` dependencies
+- Create all `__init__.py` files
+
+### Step 2: Foundation (no LLM calls)
+- `bridge.py` — stdin/stdout adapter
+- `models.py` — all Pydantic message types + AgentDeps
+- `state.py` — shared state
+- `bus.py` — message bus
+- `llm.py` — model factory
+
+### Step 3: Orchestrator + entrypoint
+- `orchestrator.py` — message routing loops
+- `__main__.py` — entrypoint with `asyncio.run`
+- Test: spawn from Rust, verify ready signal and echo-back
+
+### Step 4: User Agent
+- `agents/user_agent.py` — agent definition with tools
+- Wire into orchestrator
+- Test: type in TUI, see LLM response in panel 0
+
+### Step 5: Market Agent
+- `agents/market_agent.py` — agent definition with analysis tools
+- Wire ticker forwarding and user request forwarding
+- Test: subscribe to a pair, see analysis in panel 1
+
+### Step 6: Risk Agent
+- `agents/risk_agent.py` — agent definition with risk tools
+- Wire trade idea routing, position monitoring loop
+- Test: Market Agent proposes trade, Risk evaluates in panel 2
+
+### Step 7: Execution Agent
+- `agents/execution_agent.py` — agent definition with place_order tool
+- Wire approved order routing, order response handling
+- Test: end-to-end flow from analysis → risk approval → order placement
+
+### Step 8: Rust-side updates
+- Update spawn path in `src/main.rs`
+- Update panel labels in `src/tui/tabs/agent.rs`
+
+### Step 9: Polish
+- Message history truncation (30 message cap)
+- Graceful shutdown (cancel tasks, drain queues)
+- Ticker rate limiting (skip if <0.1% change)
+- Error handling for API failures
+
+## Verification
+
+1. `cd agents && uv run python -c "from multi_agent.models import TradeIdea; print('OK')"` — imports work
+2. `cargo run` — TUI starts, agent subprocess spawns, "ready" received
+3. Type in User Agent panel → LLM responds
+4. Subscribe to BTC/USD → Market Agent shows analysis in panel 1
+5. Market Agent sends trade idea → Risk Agent evaluates in panel 2
+6. Risk Agent approves → Execution Agent places order → order response flows back
+7. `Ctrl+C` → graceful shutdown, no zombie processes
+
+## Key Risk: Fireworks API Costs
+Each ticker update for active pairs triggers a Market Agent LLM call. With 5-second ticker intervals and multiple pairs, costs accumulate. The 0.1% price change threshold and MiniMax M2.5's extremely cheap cached input pricing ($0.03/M tokens — 90% off) mitigate this significantly, but monitoring actual usage is still important during testing.
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/denny/.REDACTED.jsonl

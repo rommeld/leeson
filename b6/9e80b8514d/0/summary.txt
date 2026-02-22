@@ -1,0 +1,36 @@
+All files are in place. Here's a summary of what was implemented:
+
+## Summary
+
+### New Python Files (in `agents/multi_agent/`)
+
+| File | Purpose |
+|------|---------|
+| `__init__.py` | Package marker |
+| `__main__.py` | Entrypoint — `asyncio.run` bootstrap |
+| `bridge.py` | Sync stdin → async queue adapter + stdout helpers |
+| `bus.py` | Inter-agent async message routing (per-role queues) |
+| `models.py` | Pydantic message types (9 message types) + `AgentDeps` |
+| `state.py` | Shared mutable state (tickers, positions, balances, risk limits) |
+| `llm.py` | Fireworks AI model factory (`MiniMax M2.5`) |
+| `orchestrator.py` | Main event loop — 6 concurrent tasks, message routing |
+| `agents/user_agent.py` | Panel 0 — operator interface, forwards to Market Agent |
+| `agents/market_agent.py` | Panel 1 — technical analysis, trade ideas with probability |
+| `agents/risk_agent.py` | Panel 2 `[risk]` — conservative gatekeeper, 2% loss rule |
+| `agents/execution_agent.py` | Panel 2 `[exec]` — executes orders exactly as specified |
+
+### New `agents/pyproject.toml`
+Dependencies: `pydantic-ai>=0.2`, `pydantic>=2.0`. Installed with `uv sync`.
+
+### Rust Changes
+
+- **`src/agent.rs`** — Extracted `wire_agent_io()` helper, added `spawn_multi_agent()` that uses `uv run --directory agents python -m multi_agent`
+- **`src/main.rs:108`** — Changed from `spawn_agent(0, "agents/agent1.py", ...)` to `spawn_multi_agent(0, ...)`
+- **`src/tui/tabs/agent.rs:73`** — Panel labels: `" User Agent "`, `" Market Agent "`, `" Risk & Execution "`
+
+### Verified
+- `cargo check` — clean, no warnings
+- `cargo clippy` — clean
+- All Python imports work without API key at import time
+- `python -m multi_agent` starts correctly and sends `{"type": "ready"}`
+- Model creation deferred to runtime (requires `FIREWORKS_API_KEY` env var)
