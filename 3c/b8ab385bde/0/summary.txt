@@ -1,0 +1,6 @@
+All 12 tests pass, clippy reports no warnings, and formatting is clean. Here's a summary of the changes to `src/risk/config.rs`:
+
+- **Struct**: Added `cost_per_1m_input_tokens: Decimal` and `cost_per_1m_output_tokens: Decimal` fields to `AgentRiskParams`
+- **Default**: Both default to `Decimal::ZERO`
+- **describe()**: Includes both new fields in the human-readable output
+- **Tests**: All three test functions updated to cover the new fields (defaults assert zero, round-trip uses `3.00`/`15.00`, describe checks for the field names)

@@ -1,0 +1,20 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "3cb8ab385bde",
+  "session_id": "b556cbdb-cc4d-4f38-9f5f-92cf5d118299",
+  "strategy": "auto-commit",
+  "created_at": "2026-02-22T11:56:28.59503Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "src/risk/config.rs"
+  ],
+  "agent": "Claude Code",
+  "token_usage": {
+    "input_tokens": 8,
+    "cache_creation_tokens": 9461,
+    "cache_read_tokens": 144101,
+    "output_tokens": 310,
+    "api_call_count": 6
+  }
+}
