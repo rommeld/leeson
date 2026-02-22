@@ -79,6 +79,16 @@ def send_token_usage(input_tokens: int, output_tokens: int) -> None:
     })
 
 
+def send_stream_delta(panel: int, delta: str) -> None:
+    """Send a streaming text delta to a TUI panel."""
+    send_to_tui({"type": "stream_delta", "agent": panel, "delta": delta})
+
+
+def send_stream_end(panel: int) -> None:
+    """Signal the end of a streaming response for a TUI panel."""
+    send_to_tui({"type": "stream_end", "agent": panel})
+
+
 def send_place_order(
     symbol: str,
     side: str,

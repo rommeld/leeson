@@ -10,7 +10,7 @@ from __future__ import annotations
 from pydantic_ai import Agent, RunContext
 
 from multi_agent.bridge import output_to_panel
-from multi_agent.models import AgentDeps, AgentRole, UserRequest, record_usage
+from multi_agent.models import AgentDeps, AgentRole, UserRequest, run_agent_streamed
 
 PANEL = 0
 
@@ -104,11 +104,6 @@ async def run_once(
 ) -> list:
     """Run the user agent on a single user message, returning updated history."""
     output_to_panel(PANEL, f"> {user_input}")
-    result = await user_agent.run(
-        user_input, deps=deps, message_history=history, model=model
+    return await run_agent_streamed(
+        user_agent, user_input, deps=deps, history=history, model=model, panel=PANEL
     )
-    record_usage(deps, result)
-    # Truncate history at 30 messages
-    history = result.all_messages()[-30:]
-    output_to_panel(PANEL, result.output)
-    return history

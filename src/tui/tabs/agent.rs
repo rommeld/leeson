@@ -6,8 +6,8 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
-        ScrollbarState, Wrap,
+        Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
+        Wrap,
     },
 };
 
@@ -93,21 +93,27 @@ fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &App) {
         };
 
         let total = app.agent_outputs[i].len();
+        let has_stream = !app.agent_stream_buffers[i].is_empty();
         // Calculate visible height inside the block borders
         let inner_height = col.height.saturating_sub(2) as usize;
 
         let scroll = &app.agent_scroll[i];
+
+        // Include the in-progress streaming line in the effective total
+        // so the scrollbar and indicator account for it
+        let effective_total = total + usize::from(has_stream && scroll.pinned);
+
         // offset is the last visible line; first visible = offset - (height - 1)
         let end = (scroll.offset + 1).min(total);
         let start = end.saturating_sub(inner_height);
 
         // Build title with scroll indicator
-        let title = if total > inner_height {
+        let title = if effective_total > inner_height {
             let at_bottom = scroll.pinned || end >= total;
             let indicator = if at_bottom {
                 "end"
             } else {
-                &format!("{end}/{total}")
+                &format!("{end}/{effective_total}")
             };
             format!("{}[{}] ", base_titles[i], indicator)
         } else {
@@ -119,22 +125,40 @@ fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &App) {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        let items: Vec<ListItem> = app.agent_outputs[i]
+        // Reserve one row for the streaming line when pinned and buffer is non-empty
+        let show_stream_line = has_stream && scroll.pinned;
+        let output_rows = if show_stream_line {
+            inner_height.saturating_sub(1)
+        } else {
+            inner_height
+        };
+
+        let mut items: Vec<ListItem> = app.agent_outputs[i]
             .iter()
             .skip(start)
-            .take(inner_height)
+            .take(output_rows)
             .map(|line| ListItem::new(line.as_str()))
             .collect();
+
+        // Append the in-progress streaming line with a yellow cursor indicator
+        if show_stream_line {
+            let stream_line = Line::from(vec![
+                Span::raw(app.agent_stream_buffers[i].as_str()),
+                Span::styled("▍", Style::default().fg(Color::Yellow)),
+            ]);
+            items.push(ListItem::new(stream_line));
+        }
 
         let list = List::new(items).block(block);
 
         frame.render_widget(list, *col);
 
         // Render scrollbar when content overflows the viewport
-        if total > inner_height {
-            let mut scrollbar_state = ScrollbarState::new(total.saturating_sub(inner_height))
-                .position(start)
-                .viewport_content_length(inner_height);
+        if effective_total > inner_height {
+            let mut scrollbar_state =
+                ScrollbarState::new(effective_total.saturating_sub(inner_height))
+                    .position(start)
+                    .viewport_content_length(inner_height);
 
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .thumb_style(Style::default().fg(Color::DarkGray))

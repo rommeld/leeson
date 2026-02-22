@@ -111,6 +111,11 @@ pub enum Message {
         output_tokens: u64,
     },
 
+    /// Incremental streaming text delta from an agent.
+    AgentStreamDelta { agent_index: usize, delta: String },
+    /// End of a streaming response from an agent.
+    AgentStreamEnd { agent_index: usize },
+
     /// Token lifecycle state change.
     TokenState(super::app::TokenState),
 
@@ -429,6 +434,14 @@ pub fn update(app: &mut App, message: Message) -> Option<Action> {
         }
         Message::PrivateChannelStatus(connected) => {
             app.private_connected = connected;
+            None
+        }
+        Message::AgentStreamDelta { agent_index, delta } => {
+            app.append_stream_delta(agent_index, &delta);
+            None
+        }
+        Message::AgentStreamEnd { agent_index } => {
+            app.flush_stream_buffer(agent_index);
             None
         }
         Message::AgentOutput { agent_index, line } => {

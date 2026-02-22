@@ -18,7 +18,7 @@ from multi_agent.models import (
     ConsultMarket,
     MarketAnalysis,
     TradeIdea,
-    record_usage,
+    run_agent_streamed,
 )
 
 PANEL = 2
@@ -200,12 +200,9 @@ async def run_on_trade_idea(
         f"Reason: {idea.reason}\n\n"
         f"Approve or reject based on risk limits and position sizing rules."
     )
-    result = await risk_agent.run(
-        prompt, deps=deps, message_history=history, model=model
+    return await run_agent_streamed(
+        risk_agent, prompt, deps=deps, history=history, model=model, panel=PANEL
     )
-    record_usage(deps, result)
-    history = result.all_messages()[-30:]
-    return history
 
 
 async def run_on_market_analysis(
@@ -218,12 +215,9 @@ async def run_on_market_analysis(
         f"Recommendation: {analysis.recommendation}\n\n"
         f"Decide what action to take on this position."
     )
-    result = await risk_agent.run(
-        prompt, deps=deps, message_history=history, model=model
+    return await run_agent_streamed(
+        risk_agent, prompt, deps=deps, history=history, model=model, panel=PANEL
     )
-    record_usage(deps, result)
-    history = result.all_messages()[-30:]
-    return history
 
 
 async def run_on_execution_update(
@@ -231,12 +225,9 @@ async def run_on_execution_update(
 ) -> list:
     """Process execution updates (order fills, status changes)."""
     prompt = f"Execution update received: {data}. Review position state."
-    result = await risk_agent.run(
-        prompt, deps=deps, message_history=history, model=model
+    return await run_agent_streamed(
+        risk_agent, prompt, deps=deps, history=history, model=model, panel=PANEL
     )
-    record_usage(deps, result)
-    history = result.all_messages()[-30:]
-    return history
 
 
 async def run_position_review(
@@ -250,9 +241,6 @@ async def run_position_review(
         "Review all open positions. Check if any need to be closed "
         "(2% loss rule) or if the Market Agent should be consulted."
     )
-    result = await risk_agent.run(
-        prompt, deps=deps, message_history=history, model=model
+    return await run_agent_streamed(
+        risk_agent, prompt, deps=deps, history=history, model=model, panel=PANEL
     )
-    record_usage(deps, result)
-    history = result.all_messages()[-30:]
-    return history

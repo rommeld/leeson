@@ -80,6 +80,13 @@ enum AgentToTui {
         input_tokens: u64,
         output_tokens: u64,
     },
+    StreamDelta {
+        agent: usize,
+        delta: String,
+    },
+    StreamEnd {
+        agent: usize,
+    },
 }
 
 /// JSON message from the TUI to a Python agent (stdin).
@@ -258,6 +265,15 @@ fn spawn_stdout_reader(
                         input_tokens,
                         output_tokens,
                     });
+                }
+                Ok(AgentToTui::StreamDelta { agent, delta }) => {
+                    let _ = tx.try_send(Message::AgentStreamDelta {
+                        agent_index: agent,
+                        delta,
+                    });
+                }
+                Ok(AgentToTui::StreamEnd { agent }) => {
+                    let _ = tx.try_send(Message::AgentStreamEnd { agent_index: agent });
                 }
                 Err(_) => {
                     // Non-JSON line — pass through as raw output

@@ -42,6 +42,8 @@ pub struct App {
     pub agent_outputs: [VecDeque<String>; 3],
     /// Scroll state for each agent output panel.
     pub agent_scroll: [ScrollState; 3],
+    /// Partial-line buffers for streaming agent output.
+    pub agent_stream_buffers: [String; 3],
     /// Current text in the agent input field.
     pub agent_input: String,
     /// Cursor position in the agent input field.
@@ -156,6 +158,7 @@ impl App {
                 VecDeque::with_capacity(MAX_AGENT_OUTPUT_LINES),
             ],
             agent_scroll: [ScrollState::default(); 3],
+            agent_stream_buffers: Default::default(),
             agent_input: String::new(),
             agent_input_cursor: 0,
 
@@ -281,6 +284,41 @@ impl App {
             if scroll.pinned {
                 scroll.offset = output.len().saturating_sub(1);
             }
+        }
+    }
+
+    /// Appends a streaming text delta to an agent's stream buffer.
+    ///
+    /// Complete lines (terminated by `\n`) are flushed immediately to
+    /// `agent_outputs` via [`add_agent_output`]. Any partial remainder
+    /// stays in the buffer for display as an in-progress line.
+    pub fn append_stream_delta(&mut self, agent_index: usize, delta: &str) {
+        if agent_index >= 3 {
+            return;
+        }
+        self.agent_stream_buffers[agent_index].push_str(delta);
+
+        // Flush complete lines
+        while let Some(newline_pos) = self.agent_stream_buffers[agent_index].find('\n') {
+            let line: String = self.agent_stream_buffers[agent_index]
+                .drain(..=newline_pos)
+                .collect();
+            // Trim the trailing newline
+            let line = line.trim_end_matches('\n').to_string();
+            self.add_agent_output(agent_index, line);
+        }
+    }
+
+    /// Flushes any remaining content in a streaming buffer as a final line.
+    ///
+    /// Called when the agent signals the end of a streaming response.
+    pub fn flush_stream_buffer(&mut self, agent_index: usize) {
+        if agent_index >= 3 {
+            return;
+        }
+        if !self.agent_stream_buffers[agent_index].is_empty() {
+            let line = std::mem::take(&mut self.agent_stream_buffers[agent_index]);
+            self.add_agent_output(agent_index, line);
         }
     }
 
@@ -829,4 +867,68 @@ pub struct AssetBalance {
     pub spot: Decimal,
     /// Balance in earn wallet.
     pub earn: Decimal,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stream_delta_flushes_complete_lines() {
+        let mut app = App::new();
+        app.append_stream_delta(0, "hello\nworld\n");
+        assert_eq!(app.agent_outputs[0].len(), 2);
+        assert_eq!(app.agent_outputs[0][0], "hello");
+        assert_eq!(app.agent_outputs[0][1], "world");
+        assert!(app.agent_stream_buffers[0].is_empty());
+    }
+
+    #[test]
+    fn stream_delta_keeps_partial_line_in_buffer() {
+        let mut app = App::new();
+        app.append_stream_delta(0, "partial");
+        assert_eq!(app.agent_outputs[0].len(), 0);
+        assert_eq!(app.agent_stream_buffers[0], "partial");
+    }
+
+    #[test]
+    fn stream_delta_accumulates_then_flushes() {
+        let mut app = App::new();
+        app.append_stream_delta(1, "hel");
+        app.append_stream_delta(1, "lo\nwor");
+        assert_eq!(app.agent_outputs[1].len(), 1);
+        assert_eq!(app.agent_outputs[1][0], "hello");
+        assert_eq!(app.agent_stream_buffers[1], "wor");
+
+        app.append_stream_delta(1, "ld");
+        assert_eq!(app.agent_outputs[1].len(), 1);
+        assert_eq!(app.agent_stream_buffers[1], "world");
+    }
+
+    #[test]
+    fn flush_stream_buffer_emits_remaining_content() {
+        let mut app = App::new();
+        app.append_stream_delta(2, "final partial");
+        app.flush_stream_buffer(2);
+        assert_eq!(app.agent_outputs[2].len(), 1);
+        assert_eq!(app.agent_outputs[2][0], "final partial");
+        assert!(app.agent_stream_buffers[2].is_empty());
+    }
+
+    #[test]
+    fn flush_stream_buffer_noop_when_empty() {
+        let mut app = App::new();
+        app.flush_stream_buffer(0);
+        assert_eq!(app.agent_outputs[0].len(), 0);
+    }
+
+    #[test]
+    fn stream_delta_ignores_invalid_agent_index() {
+        let mut app = App::new();
+        app.append_stream_delta(5, "ignored");
+        for i in 0..3 {
+            assert!(app.agent_stream_buffers[i].is_empty());
+            assert!(app.agent_outputs[i].is_empty());
+        }
+    }
 }
