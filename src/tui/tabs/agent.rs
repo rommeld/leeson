@@ -5,7 +5,10 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{
+        Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Wrap,
+    },
 };
 
 use crate::tui::app::{App, Focus, Mode};
@@ -126,6 +129,19 @@ fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &App) {
         let list = List::new(items).block(block);
 
         frame.render_widget(list, *col);
+
+        // Render scrollbar when content overflows the viewport
+        if total > inner_height {
+            let mut scrollbar_state = ScrollbarState::new(total.saturating_sub(inner_height))
+                .position(start)
+                .viewport_content_length(inner_height);
+
+            let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .thumb_style(Style::default().fg(Color::DarkGray))
+                .track_style(Style::default().fg(Color::Black));
+
+            frame.render_stateful_widget(scrollbar, *col, &mut scrollbar_state);
+        }
     }
 }
 
