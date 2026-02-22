@@ -17,8 +17,11 @@ use crate::models::{
     StatusUpdateResponse,
 };
 
+use crate::risk::config::AgentRiskParams;
+
 use super::app::{
-    App, AssetBalance, Focus, MAX_BOOK_DEPTH, MAX_ORDERBOOK_HISTORY, Mode, OrderBookSnapshot, Tab,
+    App, AssetBalance, Focus, MAX_BOOK_DEPTH, MAX_ORDERBOOK_HISTORY, Mode, OrderBookSnapshot,
+    RiskEditState, Tab,
 };
 
 /// Maximum length (in bytes) for agent input text.
@@ -532,6 +535,8 @@ pub enum Action {
     ConfirmOrder,
     /// Cancel an order.
     CancelOrder(String),
+    /// Operator saved updated agent risk parameters.
+    SaveRiskParams(AgentRiskParams),
 }
 
 /// Handles input events and updates application state.
@@ -548,6 +553,11 @@ fn handle_input(app: &mut App, event: Event) -> Option<Action> {
 
 /// Handles key press events.
 fn handle_key(app: &mut App, key: KeyEvent) -> Option<Action> {
+    // RiskEdit mode handles its own Esc (two-stage: cancel edit, then close)
+    if app.mode == Mode::RiskEdit {
+        return handle_risk_edit_mode(app, key);
+    }
+
     // Global keys (work in any mode)
     match key.code {
         KeyCode::Char('q') if key.modifiers.is_empty() && app.mode == Mode::Normal => {
@@ -566,6 +576,7 @@ fn handle_key(app: &mut App, key: KeyEvent) -> Option<Action> {
         Mode::Normal => handle_normal_mode(app, key),
         Mode::Insert => handle_insert_mode(app, key),
         Mode::Confirm => handle_confirm_mode(app, key),
+        Mode::RiskEdit => unreachable!(),
     }
 }
 
@@ -589,6 +600,13 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) -> Option<Action> {
         // Help
         KeyCode::Char('?') => {
             // TODO: Toggle help overlay
+            None
+        }
+
+        // Risk parameters overlay
+        KeyCode::Char('r') => {
+            app.risk_edit = Some(RiskEditState::new(&app.agent_risk_params));
+            app.mode = Mode::RiskEdit;
             None
         }
 
@@ -938,6 +956,129 @@ fn handle_confirm_mode(app: &mut App, key: KeyEvent) -> Option<Action> {
         KeyCode::Char('n') | KeyCode::Esc => {
             app.pending_order = None;
             app.mode = Mode::Normal;
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Handles keys in the risk parameters edit overlay.
+fn handle_risk_edit_mode(app: &mut App, key: KeyEvent) -> Option<Action> {
+    let state = app.risk_edit.as_mut()?;
+
+    if state.editing {
+        return handle_risk_field_edit(app, key);
+    }
+
+    match key.code {
+        // Navigation
+        KeyCode::Char('j') | KeyCode::Down => {
+            if state.selected < RiskEditState::FIELD_COUNT - 1 {
+                state.selected += 1;
+            }
+            None
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            state.selected = state.selected.saturating_sub(1);
+            None
+        }
+
+        // Toggle bool (intraday field, index 1)
+        KeyCode::Char(' ') => {
+            if state.selected == 1 {
+                state.params.intraday = !state.params.intraday;
+            }
+            None
+        }
+
+        // Start editing a numeric field
+        KeyCode::Enter | KeyCode::Char('i') => {
+            if state.selected != 1 {
+                // Pre-fill with current value
+                state.input = state.field_value(state.selected);
+                state.cursor = state.input.len();
+                state.editing = true;
+            }
+            None
+        }
+
+        // Save and close
+        KeyCode::Char('s') => {
+            let params = state.params.clone();
+            app.agent_risk_params = params.clone();
+            app.risk_edit = None;
+            app.mode = Mode::Normal;
+            Some(Action::SaveRiskParams(params))
+        }
+
+        // Cancel and close
+        KeyCode::Esc => {
+            app.risk_edit = None;
+            app.mode = Mode::Normal;
+            None
+        }
+
+        _ => None,
+    }
+}
+
+/// Handles keys when editing a numeric field in the risk overlay.
+fn handle_risk_field_edit(app: &mut App, key: KeyEvent) -> Option<Action> {
+    let state = app.risk_edit.as_mut().expect("editing requires risk_edit");
+
+    match key.code {
+        KeyCode::Char(c) if c.is_ascii_digit() || c == '.' => {
+            state.input.insert(state.cursor, c);
+            state.cursor += 1;
+            None
+        }
+        KeyCode::Backspace => {
+            if state.cursor > 0 {
+                state.cursor -= 1;
+                state.input.remove(state.cursor);
+            }
+            None
+        }
+        KeyCode::Left => {
+            state.cursor = state.cursor.saturating_sub(1);
+            None
+        }
+        KeyCode::Right => {
+            if state.cursor < state.input.len() {
+                state.cursor += 1;
+            }
+            None
+        }
+        KeyCode::Enter => {
+            // Commit the edited value
+            match state.selected {
+                0 => {
+                    if let Ok(v) = state.input.parse::<u32>() {
+                        state.params.trades_per_month = v;
+                    }
+                }
+                2 => {
+                    if let Ok(v) = state.input.parse::<rust_decimal::Decimal>() {
+                        state.params.trade_size_eur = v;
+                    }
+                }
+                3 => {
+                    if let Ok(v) = state.input.parse::<rust_decimal::Decimal>() {
+                        state.params.stop_loss_eur = v;
+                    }
+                }
+                _ => {}
+            }
+            state.editing = false;
+            state.input.clear();
+            state.cursor = 0;
+            None
+        }
+        KeyCode::Esc => {
+            // Cancel field edit (stay in overlay)
+            state.editing = false;
+            state.input.clear();
+            state.cursor = 0;
             None
         }
         _ => None,

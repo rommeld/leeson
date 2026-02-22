@@ -5,7 +5,7 @@ use std::fmt::Write;
 use std::path::Path;
 
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// Risk limits configuration loaded from `risk.json`.
 #[derive(Debug, Clone, Deserialize)]
@@ -138,6 +138,84 @@ impl RiskConfig {
     }
 }
 
+/// Advisory risk parameters communicated to Python trading agents.
+///
+/// These are separate from the Rust-enforced `RiskConfig` limits and live
+/// in their own file (`agent_risk.json`). The operator edits them via the
+/// TUI risk overlay; they are not enforced by the Rust risk guard.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentRiskParams {
+    /// Maximum trades allowed per calendar month.
+    pub trades_per_month: u32,
+    /// Whether intraday trading is permitted.
+    pub intraday: bool,
+    /// Standard trade size in EUR.
+    pub trade_size_eur: Decimal,
+    /// Maximum loss per trade in absolute EUR.
+    pub stop_loss_eur: Decimal,
+}
+
+impl Default for AgentRiskParams {
+    fn default() -> Self {
+        Self {
+            trades_per_month: 10,
+            intraday: false,
+            trade_size_eur: Decimal::new(100, 0),
+            stop_loss_eur: Decimal::new(20, 0),
+        }
+    }
+}
+
+impl AgentRiskParams {
+    /// Loads agent risk parameters from a JSON file.
+    ///
+    /// Returns [`Default`] if the file does not exist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file exists but cannot be parsed.
+    pub fn load(path: &Path) -> crate::Result<Self> {
+        match std::fs::read_to_string(path) {
+            Ok(contents) => {
+                let params: Self = serde_json::from_str(&contents)?;
+                Ok(params)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Self::default()),
+            Err(e) => Err(crate::LeesonError::Config(format!(
+                "failed to read {}: {e}",
+                path.display()
+            ))),
+        }
+    }
+
+    /// Saves agent risk parameters to a JSON file.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be written.
+    pub fn save(&self, path: &Path) -> crate::Result<()> {
+        let json = serde_json::to_string_pretty(self)
+            .expect("AgentRiskParams serialization should not fail");
+        std::fs::write(path, json).map_err(|e| {
+            crate::LeesonError::Config(format!("failed to write {}: {e}", path.display()))
+        })
+    }
+
+    /// Returns a human-readable description for agent system prompts.
+    pub fn describe(&self) -> String {
+        let mut out = String::from("Agent risk parameters:\n");
+        let _ = writeln!(out, "  trades_per_month: {}", self.trades_per_month);
+        let _ = writeln!(
+            out,
+            "  intraday: {}",
+            if self.intraday { "yes" } else { "no" }
+        );
+        let _ = writeln!(out, "  trade_size_eur: {}", self.trade_size_eur);
+        let _ = writeln!(out, "  stop_loss_eur: {}", self.stop_loss_eur);
+        out
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -243,5 +321,51 @@ mod tests {
         let desc = config.describe_limits();
         assert!(desc.contains("BTC/USD:"));
         assert!(desc.contains("max_order_qty: 0.5"));
+    }
+
+    #[test]
+    fn agent_risk_params_defaults() {
+        let params = AgentRiskParams::default();
+        assert_eq!(params.trades_per_month, 10);
+        assert!(!params.intraday);
+        assert_eq!(params.trade_size_eur, dec!(100));
+        assert_eq!(params.stop_loss_eur, dec!(20));
+    }
+
+    #[test]
+    fn agent_risk_params_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("agent_risk.json");
+
+        let params = AgentRiskParams {
+            trades_per_month: 25,
+            intraday: true,
+            trade_size_eur: dec!(500),
+            stop_loss_eur: dec!(50),
+        };
+        params.save(&path).unwrap();
+
+        let loaded = AgentRiskParams::load(&path).unwrap();
+        assert_eq!(loaded.trades_per_month, 25);
+        assert!(loaded.intraday);
+        assert_eq!(loaded.trade_size_eur, dec!(500));
+        assert_eq!(loaded.stop_loss_eur, dec!(50));
+    }
+
+    #[test]
+    fn agent_risk_params_missing_file_returns_default() {
+        let params = AgentRiskParams::load(Path::new("nonexistent_agent_risk.json")).unwrap();
+        assert_eq!(params.trades_per_month, 10);
+        assert!(!params.intraday);
+    }
+
+    #[test]
+    fn agent_risk_params_describe() {
+        let params = AgentRiskParams::default();
+        let desc = params.describe();
+        assert!(desc.contains("trades_per_month: 10"));
+        assert!(desc.contains("intraday: no"));
+        assert!(desc.contains("trade_size_eur: 100"));
+        assert!(desc.contains("stop_loss_eur: 20"));
     }
 }
