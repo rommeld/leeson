@@ -1,0 +1,31 @@
+All tasks complete. Here's a summary of the changes:
+
+## Summary
+
+### Python changes (4 files)
+
+1. **`agents/multi_agent/bridge.py`** — Added `send_stream_delta(panel, delta)` and `send_stream_end(panel)` functions that send `stream_delta` / `stream_end` JSON-lines messages to the TUI.
+
+2. **`agents/multi_agent/models.py`** — Added `run_agent_streamed()` helper that uses pydantic-ai's `agent.iter()` → `ModelRequestNode.stream()` → `stream_text(delta=True)` pipeline, sending each chunk via `send_stream_delta` and signaling `send_stream_end` after each model request node completes.
+
+3. **`agents/multi_agent/agents/{user,market,risk,execution,ideation}_agent.py`** — Replaced every `agent.run()` + `record_usage()` + `output_to_panel()` pattern with a single `run_agent_streamed()` call. Tool functions (e.g., `send_trade_idea`, `place_order`) remain unchanged — they still emit immediate `output_to_panel` lines.
+
+### Rust changes (4 files)
+
+4. **`src/agent.rs`** — Added `StreamDelta { agent, delta }` and `StreamEnd { agent }` variants to `AgentToTui`, with routing in `spawn_stdout_reader()` to the new `Message` variants.
+
+5. **`src/tui/event.rs`** — Added `AgentStreamDelta` and `AgentStreamEnd` to the `Message` enum, with handling in `update()` that calls `app.append_stream_delta()` / `app.flush_stream_buffer()`.
+
+6. **`src/tui/app.rs`** — Added `agent_stream_buffers: [String; 3]` field and two methods:
+   - `append_stream_delta()` — accumulates text, flushes complete `\n`-terminated lines to `agent_outputs`
+   - `flush_stream_buffer()` — emits any remaining partial content as a final line
+   
+   Plus 6 unit tests covering: complete line flushing, partial line buffering, multi-delta accumulation, flush on stream end, noop flush when empty, and invalid index bounds.
+
+7. **`src/tui/tabs/agent.rs`** — Updated `render_agent_outputs()` to show an in-progress streaming line with a yellow "▍" cursor indicator when pinned to bottom. The partial line is hidden when the operator scrolls up.
+
+### Verification
+- `cargo check` — compiles clean
+- `cargo test` — 129 tests pass (6 new + 123 existing)
+- `cargo clippy` — no warnings
+- `cargo fmt` — formatted

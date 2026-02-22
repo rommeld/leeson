@@ -1,0 +1,114 @@
+Implement the following plan:
+
+# Plan: Stream Agent Output and Show Reasoning in TUI
+
+## Context
+
+The multi-agent trading system currently uses batch `agent.run()` calls — the LLM generates its entire response before anything appears in the TUI. This means operators wait seconds with no feedback while agents "think." Switching to streaming output shows the LLM's reasoning in real-time as it generates, giving operators immediate visibility into agent decision-making.
+
+## Approach
+
+Switch from pydantic-ai's `agent.run()` to the streaming `agent.iter()` API. As the LLM generates text, send incremental deltas over the existing JSON-lines bridge to the Rust TUI. The TUI accumulates deltas in a per-panel buffer, flushing complete lines to the output panel immediately and showing the in-progress partial line with a cursor indicator.
+
+## Changes
+
+### 1. Python: Bridge streaming functions
+
+**File:** `agents/multi_agent/bridge.py`
+
+Add two new functions:
+- `send_stream_delta(panel, delta)` — sends `{"type": "stream_delta", "agent": N, "delta": "text"}`
+- `send_stream_end(panel)` — sends `{"type": "stream_end", "agent": N}`
+
+### 2. Python: Reusable streaming helper
+
+**File:** `agents/multi_agent/models.py`
+
+Add `run_agent_streamed()` that encapsulates the common streaming pattern:
+
+```python
+async def run_agent_streamed(agent, prompt, *, deps, history, model, panel) -> list:
+    async with agent.iter(prompt, deps=deps, message_history=history, model=model) as agent_run:
+        async for node in agent_run:
+            if isinstance(node, ModelRequestNode):
+                async with node.stream(agent_run.ctx) as stream:
+                    async for chunk in stream.stream_text(delta=True):
+                        send_stream_delta(panel, chunk)
+                send_stream_end(panel)
+    record_usage(deps, agent_run.result)
+    return agent_run.all_messages()[-30:]
+```
+
+Each `ModelRequestNode` gets its own stream/flush cycle, so tool calls (which happen between model nodes) appear cleanly between streamed text.
+
+### 3. Python: Convert all agent `run_*` functions
+
+Replace the `agent.run()` + `record_usage()` + `output_to_panel(result.output)` pattern with `run_agent_streamed()` in:
+
+| File | Functions |
+|------|-----------|
+| `agents/user_agent.py` | `run_once()` |
+| `agents/market_agent.py` | `run_on_user_request()`, `run_on_ticker()`, `run_on_consultation()` |
+| `agents/risk_agent.py` | `run_on_trade_idea()`, `run_on_market_analysis()`, `run_on_execution_update()`, `run_position_review()` |
+| `agents/execution_agent.py` | `run_on_approved_order()`, `run_on_close_position()` |
+| `agents/ideation_agent.py` | `run_periodic()` |
+
+Tool functions (e.g., `send_trade_idea`, `place_order`) are unchanged — they still call `output_to_panel()` directly for immediate output.
+
+### 4. Rust: New `AgentToTui` variants and stdout parsing
+
+**File:** `src/agent.rs`
+
+Add to the `AgentToTui` enum:
+```rust
+StreamDelta { agent: usize, delta: String },
+StreamEnd { agent: usize },
+```
+
+Handle in `spawn_stdout_reader()` by sending `Message::AgentStreamDelta` / `Message::AgentStreamEnd`.
+
+### 5. Rust: New `Message` variants and event handling
+
+**File:** `src/tui/event.rs`
+
+Add to `Message` enum:
+```rust
+AgentStreamDelta { agent_index: usize, delta: String },
+AgentStreamEnd { agent_index: usize },
+```
+
+Handle in `update()`:
+- `AgentStreamDelta` → `app.append_stream_delta(agent_index, &delta)`
+- `AgentStreamEnd` → `app.flush_stream_buffer(agent_index)`
+
+### 6. Rust: Streaming buffer state management
+
+**File:** `src/tui/app.rs`
+
+Add field: `pub agent_stream_buffers: [String; 3]`
+
+Add methods:
+- **`append_stream_delta(index, delta)`**: Appends delta to buffer. Scans for `\n` — complete lines get flushed to `agent_outputs` via existing `add_agent_output()`. Partial remainder stays in buffer.
+- **`flush_stream_buffer(index)`**: Flushes any remaining buffer content as a final line. Called on `stream_end`.
+
+### 7. Rust: Render streaming line with cursor indicator
+
+**File:** `src/tui/tabs/agent.rs`
+
+In `render_agent_outputs()`:
+- Count `effective_total = agent_outputs.len() + (1 if buffer non-empty)`
+- Use `effective_total` for scroll indicator and scrollbar
+- When pinned to bottom and buffer is non-empty, append a `ListItem` with the buffer text + yellow "▍" cursor
+
+When the operator scrolls up (unpins), the partial line is hidden so they can read history undisturbed.
+
+## Verification
+
+1. `cargo check` — Rust compiles with new variants and state
+2. `cargo test` — Unit tests for `append_stream_delta` / `flush_stream_buffer` buffer logic
+3. `cargo clippy` — No lint warnings
+4. Manual test: run the TUI, type a message to the User Agent, observe text streaming character-by-character in panel 0 with yellow cursor indicator
+5. Verify tool calls still work: trigger a market analysis request, confirm tool output (`[idea]`, `[risk]` prefixed lines) appears between streamed text
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/denny/.REDACTED.jsonl
