@@ -1,0 +1,1 @@
+the agent's text output length does not match the length of the text output field defined in the TUI. adjust the length of the agent output to match the text output field defined in the TUI.
