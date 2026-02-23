@@ -1,0 +1,23 @@
+Here's a summary of all changes made:
+
+### Python side (Logfire instrumentation)
+
+| File | Change |
+|------|--------|
+| `agents/pyproject.toml` | Added `logfire>=3.0` dependency |
+| `agents/multi_agent/__main__.py` | Configured logfire with `service_name='leeson-agents'`, `project_name='leeson'`, `send_to_logfire='if-token-present'`; added `instrument_pydantic_ai()` and `instrument_httpx()` |
+| `agents/multi_agent/orchestrator.py` | Added `logfire.span()` to: orchestrator top-level, all 4 agent loops, risk monitor cycle, ideation cycle; replaced bare `traceback.print_exc` with `logfire.error()` + traceback |
+| `agents/multi_agent/bus.py` | Added `logfire.info()` to `send()` for bus message tracing |
+| `agents/multi_agent/models.py` | Wrapped `run_agent_streamed()` body in a `logfire.span('run_agent_streamed')` |
+
+### Rust side (Logfire token credential input)
+
+| File | Change |
+|------|--------|
+| `src/credentials.rs` | Added `LogfireToken` variant with keyring ID `logfire_token`, env var `LOGFIRE_TOKEN`, label `Logfire Token`; added `required()` method (returns `false` for LogfireToken) |
+| `src/tui/app.rs` | Updated `FIELD_COUNT` to 4 and `fields` array size to `[ApiKeyField; 4]` |
+| `src/tui/event.rs` | Updated `SaveApiKeys` values array to `[Option<String>; 4]` |
+| `src/main.rs` | Filtered `any_credentials_missing` to only check `required()` keys |
+| `.gitignore` | Added `.logfire/` |
+
+The Logfire token is **optional** — the system works without it (logfire silently no-ops). When you enter a token via the TUI API keys overlay, it gets stored in the macOS Keychain and propagated as `LOGFIRE_TOKEN` to the Python subprocess, where logfire picks it up automatically.

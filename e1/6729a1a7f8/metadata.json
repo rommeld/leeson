@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "e16729a1a7f8",
+  "strategy": "auto-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".gitignore",
+    "agents/multi_agent/__main__.py",
+    "agents/multi_agent/bus.py",
+    "agents/multi_agent/models.py",
+    "agents/multi_agent/orchestrator.py",
+    "agents/pyproject.toml",
+    "pydantic-logfire-guide.md",
+    "src/credentials.rs",
+    "src/main.rs",
+    "src/tui/app.rs",
+    "src/tui/event.rs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e1/6729a1a7f8/0/metadata.json",
+      "transcript": "/e1/6729a1a7f8/0/full.jsonl",
+      "context": "",
+      "content_hash": "/e1/6729a1a7f8/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 27,
+    "cache_creation_tokens": 45995,
+    "cache_read_tokens": 1237247,
+    "output_tokens": 3539,
+    "api_call_count": 25
+  }
+}

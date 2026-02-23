@@ -1,0 +1,124 @@
+Implement the following plan:
+
+# Plan: Implement Pydantic Logfire for Agent Framework
+
+## Context
+
+The multi-agent trading system has no observability infrastructure. All diagnostic output goes to TUI panels via stdout JSON-lines, with no structured tracing, logging, or metrics. Adding Logfire will provide full visibility into agent runs, LLM calls, tool executions, inter-agent messaging, and Kraken API calls — all as correlated traces queryable via SQL in the Logfire UI.
+
+## Changes
+
+### 1. Add `logfire` dependency
+
+**File:** `agents/pyproject.toml`
+
+Add `logfire` to the dependencies list:
+```
+"logfire>=3.0",
+```
+
+### 2. Configure Logfire and auto-instrument at startup
+
+**File:** `agents/multi_agent/__main__.py`
+
+Add logfire configuration before the event loop starts:
+```python
+import logfire
+
+logfire.configure(
+    service_name='leeson-agents',
+    send_to_logfire='if-token-present',
+)
+logfire.instrument_pydantic_ai()
+logfire.instrument_httpx()
+```
+
+- `send_to_logfire='if-token-present'` — works without a token during local dev (no-op), sends data when `LOGFIRE_TOKEN` is set
+- `instrument_pydantic_ai()` — auto-traces all agent runs, LLM model requests, and tool calls (the user's primary ask)
+- `instrument_httpx()` — auto-traces the Kraken OHLC API calls in the ideation agent
+
+### 3. Add spans to the orchestrator event loop
+
+**File:** `agents/multi_agent/orchestrator.py`
+
+Add `import logfire` and wrap key orchestrator operations with spans:
+
+- Wrap the top-level `run()` function with a `logfire.span('orchestrator')` context
+- Wrap each agent loop iteration with a span identifying the agent and message type, e.g.:
+  ```python
+  with logfire.span('agent_loop:{agent}', agent='market', message_type=type(msg).__name__):
+  ```
+- Wrap the risk monitor cycle: `logfire.span('risk_monitor_cycle')`
+- Wrap ideation loop iterations: `logfire.span('ideation_cycle', mode='full' | 'pulse')`
+- Log errors with `logfire.error()` instead of (or in addition to) `traceback.print_exc()`
+
+### 4. Add spans to inter-agent bus messaging
+
+**File:** `agents/multi_agent/bus.py`
+
+Add `import logfire` and instrument the `send` method:
+```python
+async def send(self, to: AgentRole, message: AgentMessage) -> None:
+    logfire.info('bus_send:{to}', to=to.value, message_type=type(message).__name__)
+    await self._queues[to].put(message)
+```
+
+### 5. Add a span to the streamed agent runner
+
+**File:** `agents/multi_agent/models.py`
+
+Wrap `run_agent_streamed()` with a logfire span that captures the agent name, prompt length, and resulting token usage:
+```python
+with logfire.span('run_agent_streamed', panel=panel):
+    async with agent.iter(...) as agent_run:
+        ...
+```
+
+Note: The pydantic-ai auto-instrumentation already traces the inner `agent.iter()` call, model requests, and tool calls. This outer span groups them under the orchestrator's context.
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `agents/pyproject.toml` | Add `logfire` dependency |
+| `agents/multi_agent/__main__.py` | Configure logfire, add auto-instrumentation calls |
+| `agents/multi_agent/orchestrator.py` | Add spans to agent loops, risk monitor, ideation loop; add `logfire.error()` for exceptions |
+| `agents/multi_agent/bus.py` | Add logfire log to `send()` |
+| `agents/multi_agent/models.py` | Add span around `run_agent_streamed()` |
+
+## What This Produces
+
+A single user request will generate a trace like:
+```
+▸ orchestrator
+  ├─ agent_loop:user (UserRequest)
+  │  └─ run_agent_streamed (panel=0)
+  │     └─ agent run (user_agent)                       [auto: pydantic-ai]
+  │        ├─ model request (minimax-m2p5)              [auto: pydantic-ai]
+  │        └─ running tool: forward_to_market_agent     [auto: pydantic-ai]
+  │           └─ bus_send:market (UserRequest)
+  ├─ agent_loop:market (UserRequest)
+  │  └─ run_agent_streamed (panel=1)
+  │     └─ agent run (market_agent)                     [auto: pydantic-ai]
+  │        ├─ model request (minimax-m2p5)              [auto: pydantic-ai]
+  │        ├─ running tool: get_ticker                  [auto: pydantic-ai]
+  │        ├─ model request (minimax-m2p5)              [auto: pydantic-ai]
+  │        └─ running tool: send_trade_idea             [auto: pydantic-ai]
+  ├─ ideation_cycle (mode=full)
+  │  └─ run_agent_streamed (panel=1)
+  │     └─ agent run (ideation_agent)                   [auto: pydantic-ai]
+  │        ├─ running tool: get_ohlc                    [auto: pydantic-ai]
+  │        │  └─ GET https://api.kraken.com/...         [auto: httpx]
+  │        └─ running tool: calculate_indicators        [auto: pydantic-ai]
+```
+
+## Verification
+
+1. Run `cd agents && uv sync` to install the logfire dependency
+2. Run `logfire auth && logfire projects new` to set up a project (creates `.logfire/` directory)
+3. Start the system normally (`cargo run`) — logfire should begin capturing traces
+4. Alternatively, run without a token — logfire silently no-ops, zero behavioral change
+5. Check the Logfire UI for traces showing agent runs, tool calls, and httpx requests
+
+
+If you need specific details from before exiting plan mode (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/denny/.REDACTED.jsonl
