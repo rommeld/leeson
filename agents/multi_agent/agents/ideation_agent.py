@@ -457,10 +457,6 @@ async def run_market_pulse(
         "Use send_trade_idea only if you see a clear, urgent opportunity."
     )
 
-    result = await ideation_agent.run(
-        prompt, deps=deps, message_history=history, model=model
+    return await run_agent_streamed(
+        ideation_agent, prompt, deps=deps, history=history, model=model, panel=PANEL
     )
-    record_usage(deps, result)
-    history = result.all_messages()[-30:]
-    output_to_panel(PANEL, f"[pulse] {result.output}")
-    return history
