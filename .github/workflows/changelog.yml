@@ -32,8 +32,9 @@ jobs:
 
       - name: Check if should skip
         id: should-skip
+        env:
+          COMMIT_MSG: ${{ steps.get-commit.outputs.message }}
         run: |
-          COMMIT_MSG="${{ steps.get-commit.outputs.message }}"
           if echo "$COMMIT_MSG" | grep -qE '\[skip ci\]|chore: bump version|chore: update changelog'; then
             echo "skip=true" >> $GITHUB_OUTPUT
             echo "Skipping: automated commit detected"
@@ -44,8 +45,9 @@ jobs:
       - name: Determine change type
         id: change-type
         if: steps.should-skip.outputs.skip != 'true'
+        env:
+          COMMIT_MSG: ${{ steps.get-commit.outputs.message }}
         run: |
-          COMMIT_MSG="${{ steps.get-commit.outputs.message }}"
           FIRST_LINE=$(echo "$COMMIT_MSG" | head -n 1)
           if [[ "$FIRST_LINE" =~ ^feat(\(.+\))?:|^feat: ]]; then
             echo "type=Added" >> $GITHUB_OUTPUT
@@ -73,12 +75,13 @@ jobs:
 
       - name: Update CHANGELOG.md
         if: steps.should-skip.outputs.skip != 'true' && steps.change-type.outputs.type != 'none'
+        env:
+          COMMIT_MSG: ${{ steps.get-commit.outputs.message }}
+          CHANGE_TYPE: ${{ steps.change-type.outputs.type }}
+          IS_BREAKING: ${{ steps.change-type.outputs.is_breaking }}
+          COMMIT_SHA: ${{ steps.get-commit.outputs.sha }}
         run: |
-          COMMIT_MSG="${{ steps.get-commit.outputs.message }}"
           FIRST_LINE=$(echo "$COMMIT_MSG" | head -n 1)
-          CHANGE_TYPE="${{ steps.change-type.outputs.type }}"
-          IS_BREAKING="${{ steps.change-type.outputs.is_breaking }}"
-          COMMIT_SHA="${{ steps.get-commit.outputs.sha }}"
           SHORT_SHA="${COMMIT_SHA:0:7}"
 
           # Extract the description from commit message (remove prefix)
