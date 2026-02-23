@@ -33,6 +33,7 @@ def main() -> None:
         pass
     finally:
         loop.close()
+        logfire.shutdown()
 
 
 if __name__ == "__main__":
