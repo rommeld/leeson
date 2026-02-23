@@ -17,6 +17,7 @@ pub enum CredentialKey {
     FireworksApiKey,
     KrakenApiKey,
     KrakenApiSecret,
+    LogfireToken,
 }
 
 impl CredentialKey {
@@ -26,6 +27,7 @@ impl CredentialKey {
             Self::FireworksApiKey => "fireworks_api_key",
             Self::KrakenApiKey => "kraken_api_key",
             Self::KrakenApiSecret => "kraken_api_secret",
+            Self::LogfireToken => "logfire_token",
         }
     }
 
@@ -35,6 +37,7 @@ impl CredentialKey {
             Self::FireworksApiKey => "FIREWORKS_API_KEY",
             Self::KrakenApiKey => "KRAKEN_API_KEY",
             Self::KrakenApiSecret => "KRAKEN_API_SECRET",
+            Self::LogfireToken => "LOGFIRE_TOKEN",
         }
     }
 
@@ -44,14 +47,27 @@ impl CredentialKey {
             Self::FireworksApiKey => "Fireworks API Key",
             Self::KrakenApiKey => "Kraken API Key",
             Self::KrakenApiSecret => "Kraken API Secret",
+            Self::LogfireToken => "Logfire Token",
+        }
+    }
+
+    /// Whether this credential is required for the system to operate.
+    ///
+    /// Optional credentials (e.g. Logfire) enhance functionality but
+    /// the system works without them.
+    pub fn required(self) -> bool {
+        match self {
+            Self::FireworksApiKey | Self::KrakenApiKey | Self::KrakenApiSecret => true,
+            Self::LogfireToken => false,
         }
     }
 
     /// All credential keys in display order.
-    pub const ALL: [CredentialKey; 3] = [
+    pub const ALL: [CredentialKey; 4] = [
         Self::FireworksApiKey,
         Self::KrakenApiKey,
         Self::KrakenApiSecret,
+        Self::LogfireToken,
     ];
 }
 

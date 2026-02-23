@@ -700,7 +700,7 @@ pub struct ApiKeysEditState {
     /// Cursor position within the input buffer.
     pub cursor: usize,
     /// Per-field state.
-    pub fields: [ApiKeyField; 3],
+    pub fields: [ApiKeyField; 4],
 }
 
 impl Default for ApiKeysEditState {
@@ -711,7 +711,7 @@ impl Default for ApiKeysEditState {
 
 impl ApiKeysEditState {
     /// Number of credential fields.
-    pub const FIELD_COUNT: usize = 3;
+    pub const FIELD_COUNT: usize = 4;
 
     /// Creates a new edit state, checking which keys are already set.
     pub fn new() -> Self {

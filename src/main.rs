@@ -41,6 +41,7 @@ async fn main() -> Result<(), LeesonError> {
 
     let any_credentials_missing = CredentialKey::ALL
         .iter()
+        .filter(|key| key.required())
         .any(|key| std::env::var(key.env_var()).unwrap_or_default().is_empty());
 
     let has_credentials = matches!(

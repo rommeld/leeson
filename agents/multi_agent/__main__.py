@@ -18,6 +18,7 @@ from multi_agent import orchestrator
 logfire.configure(
     service_name='leeson-agents',
     send_to_logfire='if-token-present',
+    project_name='leeson',
 )
 logfire.instrument_pydantic_ai()
 logfire.instrument_httpx()

@@ -567,7 +567,7 @@ pub enum Action {
     /// Operator saved API keys from the overlay.
     SaveApiKeys {
         /// New values for each credential (None = unchanged).
-        values: [Option<String>; 3],
+        values: [Option<String>; 4],
     },
 }
 

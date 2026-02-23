@@ -8,3 +8,9 @@ __pycache__/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Logfire local config
+.logfire/
+
+# Desing documents
+# pydantic-logfire-guide.md
