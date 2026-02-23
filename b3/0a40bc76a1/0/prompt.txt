@@ -1,0 +1,1 @@
+Remove the intel release for macOS. I got this error message in the CD: The configuration 'macos-13-us-default' is not supported

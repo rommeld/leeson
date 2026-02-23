@@ -1,0 +1,1 @@
+Removed the macOS Intel (`x86_64-apple-darwin` / `macos-13`) target from the build matrix. The workflow now builds 3 targets: macOS ARM, Linux, and Windows.
