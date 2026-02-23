@@ -1,0 +1,7 @@
+That's it. The `logfire.shutdown()` call in the `finally` block ensures that when the TUI quits with `q`:
+
+- All pending traces are flushed to the Logfire backend
+- The orchestrator span closes cleanly (it already does via the `with` block in `orchestrator.py:59`)
+- The Logfire live view goes inactive
+
+A clean session on startup is already guaranteed because each TUI start spawns a fresh agent subprocess, which calls `logfire.configure()` from scratch — no state carries over from previous runs.

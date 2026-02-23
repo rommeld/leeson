@@ -1,0 +1,1 @@
+disable the logfire live when I close the TUI with `q` and start a clean session when I start the TUI.
