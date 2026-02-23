@@ -42,3 +42,7 @@ tempfile = "3.25.0"
 integration-tests = []
 python = ["dep:pyo3"]
 extension-module = ["pyo3/extension-module"]
+
+[profile.release]
+strip = true
+lto = true
