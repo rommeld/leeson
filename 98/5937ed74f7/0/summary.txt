@@ -1,0 +1,10 @@
+Both changes are in place and verified:
+
+**`Cargo.toml`** — Added `[profile.release]` with `strip = true` (removes debug symbols) and `lto = true` (link-time optimization). Release build compiles successfully.
+
+**`.github/workflows/build.yml`** — New workflow with:
+- **Triggers**: `release: [published]` (auto-fires from `release.yml`) and `workflow_dispatch` with optional `tag` input
+- **`build` job**: Matrix of 4 targets (macOS ARM, macOS Intel, Linux, Windows) running in parallel, each packaging the binary + `risk.json` into an archive with SHA256 checksum
+- **`publish` job**: Downloads all artifacts and uploads them to the GitHub Release (only on release events)
+
+No changes to the existing `release.yml` — the event coupling is automatic via the `published` event.
