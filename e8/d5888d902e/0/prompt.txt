@@ -1,0 +1,3 @@
+during CI this error occured: Run COMMIT_MSG="Disable the logfire live when I close the TUI with `q` and start a clean
+REDACTED.sh: line 3: q: command not found
+Error: Process completed with exit code 127.

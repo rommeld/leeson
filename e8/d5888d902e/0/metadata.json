@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "e8d5888d902e",
+  "session_id": "35d71787-cb22-4fc8-a2f7-b8ce61409f43",
+  "strategy": "auto-commit",
+  "created_at": "2026-02-23T10:09:27.33885Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/changelog.yml"
+  ],
+  "agent": "Claude Code",
+  "transcript_identifier_at_start": "477027ce-3707-4e0e-85fa-44d94599aa44",
+  "checkpoint_transcript_start": 5,
+  "transcript_lines_at_start": 5,
+  "token_usage": {
+    "input_tokens": 12,
+    "cache_creation_tokens": 14593,
+    "cache_read_tokens": 252950,
+    "output_tokens": 1235,
+    "api_call_count": 10
+  }
+}
