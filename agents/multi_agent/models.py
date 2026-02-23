@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING
 
+import logfire
 from pydantic import BaseModel
 from pydantic_ai import Agent
 from pydantic_ai._agent_graph import ModelRequestNode
@@ -185,14 +186,15 @@ async def run_agent_streamed(
 
     Returns the (truncated) message history.
     """
-    async with agent.iter(
-        prompt, deps=deps, message_history=history, model=model
-    ) as agent_run:
-        async for node in agent_run:
-            if isinstance(node, ModelRequestNode):
-                async with node.stream(agent_run.ctx) as stream:
-                    async for chunk in stream.stream_text(delta=True):
-                        send_stream_delta(panel, chunk)
-                send_stream_end(panel)
-    record_usage(deps, agent_run)
-    return agent_run.all_messages()[-30:]
+    with logfire.span('run_agent_streamed', panel=panel):
+        async with agent.iter(
+            prompt, deps=deps, message_history=history, model=model
+        ) as agent_run:
+            async for node in agent_run:
+                if isinstance(node, ModelRequestNode):
+                    async with node.stream(agent_run.ctx) as stream:
+                        async for chunk in stream.stream_text(delta=True):
+                            send_stream_delta(panel, chunk)
+                    send_stream_end(panel)
+        record_usage(deps, agent_run)
+        return agent_run.all_messages()[-30:]

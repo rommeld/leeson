@@ -16,6 +16,8 @@ import asyncio
 import sys
 import traceback
 
+import logfire
+
 from multi_agent.bridge import StdinBridge, output_to_panel, send_ready
 from multi_agent.bus import AgentBus
 from multi_agent.llm import create_model
@@ -54,72 +56,73 @@ PULSES_PER_FULL_CYCLE = IDEATION_INTERVAL // MARKET_PULSE_INTERVAL  # ~6
 
 async def run(loop: asyncio.AbstractEventLoop) -> None:
     """Start the multi-agent system."""
-    state = SharedState()
-    bus = AgentBus()
-    bridge = StdinBridge(loop)
-    bridge.start()
+    with logfire.span('orchestrator'):
+        state = SharedState()
+        bus = AgentBus()
+        bridge = StdinBridge(loop)
+        bridge.start()
 
-    # Create shared LLM model instance (deferred until runtime so
-    # FIREWORKS_API_KEY is available)
-    model = create_model()
+        # Create shared LLM model instance (deferred until runtime so
+        # FIREWORKS_API_KEY is available)
+        model = create_model()
 
-    # Create per-agent deps with their output panel assignments
-    user_deps = AgentDeps(state=state, bus=bus, output_panel=0)
-    market_deps = AgentDeps(state=state, bus=bus, output_panel=1)
-    ideation_deps = AgentDeps(state=state, bus=bus, output_panel=1)
-    risk_deps = AgentDeps(state=state, bus=bus, output_panel=2)
-    exec_deps = AgentDeps(state=state, bus=bus, output_panel=2)
+        # Create per-agent deps with their output panel assignments
+        user_deps = AgentDeps(state=state, bus=bus, output_panel=0)
+        market_deps = AgentDeps(state=state, bus=bus, output_panel=1)
+        ideation_deps = AgentDeps(state=state, bus=bus, output_panel=1)
+        risk_deps = AgentDeps(state=state, bus=bus, output_panel=2)
+        exec_deps = AgentDeps(state=state, bus=bus, output_panel=2)
 
-    send_ready()
+        send_ready()
 
-    tasks = [
-        asyncio.create_task(
-            _route_stdin_messages(bridge, bus, state),
-            name="route_stdin",
-        ),
-        asyncio.create_task(
-            _run_user_agent_loop(bus, user_deps, model),
-            name="user_agent",
-        ),
-        asyncio.create_task(
-            _run_market_agent_loop(bus, market_deps, model),
-            name="market_agent",
-        ),
-        asyncio.create_task(
-            _run_risk_agent_loop(bus, risk_deps, model),
-            name="risk_agent",
-        ),
-        asyncio.create_task(
-            _run_execution_agent_loop(bus, exec_deps, model),
-            name="execution_agent",
-        ),
-        asyncio.create_task(
-            _run_risk_monitor(risk_deps, model),
-            name="risk_monitor",
-        ),
-        asyncio.create_task(
-            _run_ideation_loop(ideation_deps, model),
-            name="ideation_agent",
-        ),
-    ]
+        tasks = [
+            asyncio.create_task(
+                _route_stdin_messages(bridge, bus, state),
+                name="route_stdin",
+            ),
+            asyncio.create_task(
+                _run_user_agent_loop(bus, user_deps, model),
+                name="user_agent",
+            ),
+            asyncio.create_task(
+                _run_market_agent_loop(bus, market_deps, model),
+                name="market_agent",
+            ),
+            asyncio.create_task(
+                _run_risk_agent_loop(bus, risk_deps, model),
+                name="risk_agent",
+            ),
+            asyncio.create_task(
+                _run_execution_agent_loop(bus, exec_deps, model),
+                name="execution_agent",
+            ),
+            asyncio.create_task(
+                _run_risk_monitor(risk_deps, model),
+                name="risk_monitor",
+            ),
+            asyncio.create_task(
+                _run_ideation_loop(ideation_deps, model),
+                name="ideation_agent",
+            ),
+        ]
 
-    try:
-        # Wait until any task completes (usually route_stdin on shutdown)
-        done, pending = await asyncio.wait(
-            tasks, return_when=asyncio.FIRST_COMPLETED
-        )
-        # Check for unexpected errors
-        for task in done:
-            if task.exception():
-                output_to_panel(
-                    0,
-                    f"[error] Task {task.get_name()} failed: {task.exception()}",
-                )
-    finally:
-        state.shutting_down = True
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
+        try:
+            # Wait until any task completes (usually route_stdin on shutdown)
+            done, pending = await asyncio.wait(
+                tasks, return_when=asyncio.FIRST_COMPLETED
+            )
+            # Check for unexpected errors
+            for task in done:
+                if task.exception():
+                    output_to_panel(
+                        0,
+                        f"[error] Task {task.get_name()} failed: {task.exception()}",
+                    )
+        finally:
+            state.shutting_down = True
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def _route_stdin_messages(
@@ -249,11 +252,13 @@ async def _run_user_agent_loop(
         if deps.state.shutting_down:
             break
         try:
-            if isinstance(msg, UserRequest):
-                history = await user_agent.run_once(
-                    deps, msg.content, history, model=model
-                )
+            with logfire.span('agent_loop:{agent}', agent='user', message_type=type(msg).__name__):
+                if isinstance(msg, UserRequest):
+                    history = await user_agent.run_once(
+                        deps, msg.content, history, model=model
+                    )
         except Exception:
+            logfire.error('agent error', agent='user', exc_info=True)
             traceback.print_exc(file=sys.stderr)
             output_to_panel(0, "[error] User Agent encountered an error")
 
@@ -268,26 +273,28 @@ async def _run_market_agent_loop(
         if deps.state.shutting_down:
             break
         try:
-            if isinstance(msg, UserRequest):
-                history = await market_agent.run_on_user_request(
-                    deps, msg, history, model=model
-                )
-            elif isinstance(msg, TickerBroadcast):
-                symbol = msg.data.get("symbol", "")
-                history = await market_agent.run_on_ticker(
-                    deps, symbol, history, model=model
-                )
-            elif isinstance(msg, ConsultMarket):
-                history = await market_agent.run_on_consultation(
-                    deps, msg, history, model=model
-                )
-            elif isinstance(msg, OrderPlaced):
-                # Informational — no LLM call needed
-                status = "filled" if msg.success else f"failed: {msg.error}"
-                output_to_panel(
-                    1, f"[order] {msg.symbol} {msg.side} — {status}"
-                )
+            with logfire.span('agent_loop:{agent}', agent='market', message_type=type(msg).__name__):
+                if isinstance(msg, UserRequest):
+                    history = await market_agent.run_on_user_request(
+                        deps, msg, history, model=model
+                    )
+                elif isinstance(msg, TickerBroadcast):
+                    symbol = msg.data.get("symbol", "")
+                    history = await market_agent.run_on_ticker(
+                        deps, symbol, history, model=model
+                    )
+                elif isinstance(msg, ConsultMarket):
+                    history = await market_agent.run_on_consultation(
+                        deps, msg, history, model=model
+                    )
+                elif isinstance(msg, OrderPlaced):
+                    # Informational — no LLM call needed
+                    status = "filled" if msg.success else f"failed: {msg.error}"
+                    output_to_panel(
+                        1, f"[order] {msg.symbol} {msg.side} — {status}"
+                    )
         except Exception:
+            logfire.error('agent error', agent='market', exc_info=True)
             traceback.print_exc(file=sys.stderr)
             output_to_panel(1, "[error] Market Agent encountered an error")
 
@@ -302,25 +309,27 @@ async def _run_risk_agent_loop(
         if deps.state.shutting_down:
             break
         try:
-            if isinstance(msg, TradeIdea):
-                history = await risk_agent.run_on_trade_idea(
-                    deps, msg, history, model=model
-                )
-            elif isinstance(msg, MarketAnalysis):
-                history = await risk_agent.run_on_market_analysis(
-                    deps, msg, history, model=model
-                )
-            elif isinstance(msg, OrderFilled):
-                history = await risk_agent.run_on_execution_update(
-                    deps, msg.data, history, model=model
-                )
-            elif isinstance(msg, OrderPlaced):
-                if not msg.success:
-                    output_to_panel(
-                        2,
-                        f"[risk] Order failed: {msg.error}",
+            with logfire.span('agent_loop:{agent}', agent='risk', message_type=type(msg).__name__):
+                if isinstance(msg, TradeIdea):
+                    history = await risk_agent.run_on_trade_idea(
+                        deps, msg, history, model=model
                     )
+                elif isinstance(msg, MarketAnalysis):
+                    history = await risk_agent.run_on_market_analysis(
+                        deps, msg, history, model=model
+                    )
+                elif isinstance(msg, OrderFilled):
+                    history = await risk_agent.run_on_execution_update(
+                        deps, msg.data, history, model=model
+                    )
+                elif isinstance(msg, OrderPlaced):
+                    if not msg.success:
+                        output_to_panel(
+                            2,
+                            f"[risk] Order failed: {msg.error}",
+                        )
         except Exception:
+            logfire.error('agent error', agent='risk', exc_info=True)
             traceback.print_exc(file=sys.stderr)
             output_to_panel(2, "[risk] [error] Risk Agent encountered an error")
 
@@ -334,24 +343,26 @@ async def _run_execution_agent_loop(
         if deps.state.shutting_down:
             break
         try:
-            if isinstance(msg, ApprovedOrder):
-                await execution_agent.run_on_approved_order(
-                    deps, msg, model=model
-                )
-            elif isinstance(msg, ClosePosition):
-                await execution_agent.run_on_close_position(
-                    deps, msg, model=model
-                )
-            elif isinstance(msg, OrderPlaced):
-                # Order response from exchange
-                await execution_agent.run_on_order_response(
-                    deps,
-                    success=msg.success,
-                    order_id=msg.order_id,
-                    cl_ord_id=None,
-                    error=msg.error,
-                )
+            with logfire.span('agent_loop:{agent}', agent='execution', message_type=type(msg).__name__):
+                if isinstance(msg, ApprovedOrder):
+                    await execution_agent.run_on_approved_order(
+                        deps, msg, model=model
+                    )
+                elif isinstance(msg, ClosePosition):
+                    await execution_agent.run_on_close_position(
+                        deps, msg, model=model
+                    )
+                elif isinstance(msg, OrderPlaced):
+                    # Order response from exchange
+                    await execution_agent.run_on_order_response(
+                        deps,
+                        success=msg.success,
+                        order_id=msg.order_id,
+                        cl_ord_id=None,
+                        error=msg.error,
+                    )
         except Exception:
+            logfire.error('agent error', agent='execution', exc_info=True)
             traceback.print_exc(file=sys.stderr)
             output_to_panel(2, "[exec] [error] Execution Agent encountered an error")
 
@@ -364,10 +375,12 @@ async def _run_risk_monitor(deps: AgentDeps, model: object) -> None:
         if deps.state.shutting_down:
             break
         try:
-            history = await risk_agent.run_position_review(
-                deps, history, model=model
-            )
+            with logfire.span('risk_monitor_cycle'):
+                history = await risk_agent.run_position_review(
+                    deps, history, model=model
+                )
         except Exception:
+            logfire.error('risk monitor error', exc_info=True)
             traceback.print_exc(file=sys.stderr)
 
 
@@ -389,17 +402,20 @@ async def _run_ideation_loop(deps: AgentDeps, model: object) -> None:
 
     while not deps.state.shutting_down:
         try:
-            if pulse_count == 0:
-                # Full OHLC analysis
-                history = await ideation_agent.run_periodic(
-                    deps, history, model=model
-                )
-            else:
-                # Lightweight market pulse check
-                history = await ideation_agent.run_market_pulse(
-                    deps, history, model=model
-                )
+            mode = 'full' if pulse_count == 0 else 'pulse'
+            with logfire.span('ideation_cycle', mode=mode):
+                if pulse_count == 0:
+                    # Full OHLC analysis
+                    history = await ideation_agent.run_periodic(
+                        deps, history, model=model
+                    )
+                else:
+                    # Lightweight market pulse check
+                    history = await ideation_agent.run_market_pulse(
+                        deps, history, model=model
+                    )
         except Exception:
+            logfire.error('ideation error', exc_info=True)
             traceback.print_exc(file=sys.stderr)
             output_to_panel(1, "[ideation] [error] Ideation Agent encountered an error")
 

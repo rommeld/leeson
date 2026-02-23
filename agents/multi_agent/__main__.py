@@ -11,7 +11,16 @@ from __future__ import annotations
 import asyncio
 import sys
 
+import logfire
+
 from multi_agent import orchestrator
+
+logfire.configure(
+    service_name='leeson-agents',
+    send_to_logfire='if-token-present',
+)
+logfire.instrument_pydantic_ai()
+logfire.instrument_httpx()
 
 
 def main() -> None:

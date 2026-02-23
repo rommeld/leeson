@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 
+import logfire
+
 from multi_agent.models import AgentMessage, AgentRole
 
 
@@ -17,6 +19,7 @@ class AgentBus:
 
     async def send(self, to: AgentRole, message: AgentMessage) -> None:
         """Send a message to a specific agent's queue."""
+        logfire.info('bus_send:{to}', to=to.value, message_type=type(message).__name__)
         await self._queues[to].put(message)
 
     async def recv(self, role: AgentRole) -> AgentMessage:
