@@ -1,0 +1,1 @@
+That's it. Adding `console=False` to `logfire.configure()` disables the console exporter that writes span traces to stderr/stdout. All traces will still be sent to the Logfire SaaS backend — only the local console output is suppressed, so the TUI agent panels won't show logfire noise anymore.

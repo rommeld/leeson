@@ -1,0 +1,1 @@
+I do not need to see the logfire traces in the TUI. The output in the logfire SaaS soultion is enough.
