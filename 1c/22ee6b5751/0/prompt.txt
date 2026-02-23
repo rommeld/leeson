@@ -1,0 +1,1 @@
+There is user warning: *UserWarning: The `project_name` argument is deprecated and not needed.* coming from logfire. The current logfire version is 4.25.0.

@@ -1,0 +1,1 @@
+Removed the deprecated `project_name` argument from `logfire.configure()` at `agents/multi_agent/__main__.py:21`. The warning should be gone now.
