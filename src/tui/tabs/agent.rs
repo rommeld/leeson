@@ -5,9 +5,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{
-        Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
-    },
+    widgets::{Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap},
 };
 
 use crate::tui::app::{App, Focus, Mode};
@@ -151,9 +149,7 @@ fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &mut App) {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        let paragraph = paragraph
-            .scroll((visual_offset as u16, 0))
-            .block(block);
+        let paragraph = paragraph.scroll((visual_offset as u16, 0)).block(block);
 
         frame.render_widget(paragraph, *col);
 
