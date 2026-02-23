@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.4",
+  "checkpoint_id": "929f3ad0ba72",
+  "strategy": "auto-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "agents/multi_agent/agents/ideation_agent.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/92/9f3ad0ba72/0/metadata.json",
+      "transcript": "/92/9f3ad0ba72/0/full.jsonl",
+      "context": "",
+      "content_hash": "/92/9f3ad0ba72/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6,
+    "cache_creation_tokens": 5469,
+    "cache_read_tokens": 88594,
+    "output_tokens": 242,
+    "api_call_count": 4
+  }
+}

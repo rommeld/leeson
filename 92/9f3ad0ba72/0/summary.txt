@@ -1,0 +1,1 @@
+Done. The fix replaces the broken raw `.run()` + undefined `record_usage()` call with `run_agent_streamed()`, matching the pattern used by `run_periodic` (line 406) and all other agents. Rust compilation with the `python` feature passes cleanly.
