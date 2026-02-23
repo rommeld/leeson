@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Implement multi-agent trading system with Python/PyO3 bridge (41878b1)
+- Add ideation agent with historical OHLC data analysis (d463db3)
+- Add simulation mode for paper trading (0b57c40)
+- Expose trading data to Python agents via PyO3 (069b2a8)
+- Add global risk parameters overlay in TUI (3bfc482)
+- Add token cost parameters to AgentRiskParams (53663c5)
+- Add scrollable text output with scrollbar in agent panel (9abfe14)
+- Add Logfire observability integration for Python agents (265cc4f)
+
+### Fixed
+
+- Fix agent text output length mismatch with display area (0839d50)
+- Gracefully handle authenticated WebSocket connection failures (6bacbe3)
+- Fix Logfire deprecation warning for project_name argument (df438a4)
+- Fix CI changelog workflow commit message handling (5b68ef2)
+
+### Changed
+
+- Disable Logfire live view in TUI for cleaner output (d2f6025)
+- Enforce per-collection capacity limits with binary search insertion (a63fa56)
+- Remove intel release target for macOS (9bbe6ee)
+
+### Security
+
+- Wrap credentials and auth tokens in Zeroizing<String> (c6045e8)
+- Sanitize agent input with length limit and control char filtering (4dffd0f)
+
 ## [0.2.0] - 2026-02-23
 
 ### Added
