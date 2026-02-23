@@ -1,0 +1,13 @@
+The README looks good. All sections are in place, the architecture diagram is corrected, and the content is accurate. Here's a summary of the changes:
+
+**Architecture diagram** — Changed `PyO3` label to `JSON-lines (stdin/stdout)` to reflect how agents actually communicate.
+
+**Description** — Updated to mention JSON-lines over stdin/stdout instead of PyO3.
+
+**New sections added:**
+- **Prerequisites** — Rust 1.85+, Python 3.12+ with uv, supported platforms
+- **Configuration** — Environment variables table (7 vars), `risk.json` format with example, `agent_risk.json` format with example
+- **Building and Running** — Build commands including simulation mode, agent spawning explanation
+- **TUI Key Bindings** — Organized by context (Global, Agent Tab Normal/Insert, Trading Pair Tab, Confirm Overlay)
+- **Python Extension** — Improved with `--features` flags, `from decimal import Decimal`, and feature flag explanations
+- **Development** — Test, lint, format, and check commands
