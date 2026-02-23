@@ -166,7 +166,7 @@ async fn main() -> Result<(), LeesonError> {
 
         // Render UI
         terminal
-            .draw(|frame| tui::render(frame, &app))
+            .draw(|frame| tui::render(frame, &mut app))
             .map_err(|e| LeesonError::Io(e.to_string()))?;
 
         // Check if we should quit

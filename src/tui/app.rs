@@ -273,17 +273,14 @@ impl App {
             let was_at_max = output.len() >= MAX_AGENT_OUTPUT_LINES;
             if was_at_max {
                 output.pop_front();
-                // Adjust scroll offset when oldest line is removed
+                // Approximate offset adjustment when not pinned
                 let scroll = &mut self.agent_scroll[agent_index];
-                scroll.offset = scroll.offset.saturating_sub(1);
+                if !scroll.pinned {
+                    scroll.offset = scroll.offset.saturating_sub(1);
+                }
             }
             output.push_back(line);
-
-            // Auto-scroll to bottom when pinned
-            let scroll = &mut self.agent_scroll[agent_index];
-            if scroll.pinned {
-                scroll.offset = output.len().saturating_sub(1);
-            }
+            // When pinned, offset is computed at render time from max_scroll
         }
     }
 
@@ -333,16 +330,15 @@ impl App {
         }
     }
 
-    /// Scrolls an agent output panel down by one line.
+    /// Scrolls an agent output panel down by one visual row.
     pub fn scroll_agent_down(&mut self, agent_index: usize) {
         if agent_index < 3 {
-            let total = self.agent_outputs[agent_index].len();
             let scroll = &mut self.agent_scroll[agent_index];
-            if scroll.offset < total.saturating_sub(1) {
+            if scroll.offset < scroll.max_scroll {
                 scroll.offset += 1;
             }
-            // Re-pin when scrolled to (near) the bottom
-            if scroll.offset >= total.saturating_sub(1) {
+            // Re-pin when scrolled to the bottom
+            if scroll.offset >= scroll.max_scroll {
                 scroll.pinned = true;
             }
         }
@@ -360,9 +356,8 @@ impl App {
     /// Scrolls an agent output panel to the bottom and re-pins.
     pub fn scroll_agent_bottom(&mut self, agent_index: usize) {
         if agent_index < 3 {
-            let total = self.agent_outputs[agent_index].len();
             let scroll = &mut self.agent_scroll[agent_index];
-            scroll.offset = total.saturating_sub(1);
+            scroll.offset = scroll.max_scroll;
             scroll.pinned = true;
         }
     }
@@ -841,10 +836,12 @@ pub struct SimulationStats {
 /// Scroll state for a text output panel.
 #[derive(Clone, Copy, Debug)]
 pub struct ScrollState {
-    /// Index of the last visible line (bottom of viewport).
+    /// Number of visual (wrapped) rows scrolled from the top of content.
     pub offset: usize,
     /// Whether the view is pinned to the bottom (auto-scrolls on new content).
     pub pinned: bool,
+    /// Maximum valid scroll offset (updated each render frame).
+    pub max_scroll: usize,
 }
 
 impl Default for ScrollState {
@@ -852,6 +849,7 @@ impl Default for ScrollState {
         Self {
             offset: 0,
             pinned: true,
+            max_scroll: 0,
         }
     }
 }

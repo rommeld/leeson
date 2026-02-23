@@ -10,7 +10,7 @@ use super::app::{ApiKeysEditState, App, FieldStatus, Mode, RiskEditState, Tab};
 use super::tabs::{agent, trading_pair};
 
 /// Renders the entire application UI.
-pub fn render(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &mut App) {
     match app.current_tab() {
         Tab::Agent => agent::render(frame, app),
         Tab::TradingPair(symbol) => trading_pair::render(frame, app, symbol),

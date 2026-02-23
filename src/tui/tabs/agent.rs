@@ -4,10 +4,9 @@ use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::{Line, Span, Text},
     widgets::{
-        Block, Borders, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState,
-        Wrap,
+        Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
     },
 };
 
@@ -15,7 +14,7 @@ use crate::tui::app::{App, Focus, Mode};
 use crate::tui::components::{status_bar, tab_bar};
 
 /// Renders the Agent tab.
-pub fn render(frame: &mut Frame, app: &App) {
+pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
 
     // Main vertical layout
@@ -63,7 +62,7 @@ pub fn render(frame: &mut Frame, app: &App) {
 }
 
 /// Renders the three agent output panels.
-fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &App) {
+fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &mut App) {
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -92,28 +91,55 @@ fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &App) {
             Style::default().fg(Color::DarkGray)
         };
 
-        let total = app.agent_outputs[i].len();
-        let has_stream = !app.agent_stream_buffers[i].is_empty();
-        // Calculate visible height inside the block borders
         let inner_height = col.height.saturating_sub(2) as usize;
+        let inner_width = col.width.saturating_sub(2);
 
-        let scroll = &app.agent_scroll[i];
+        // Snapshot output data to avoid borrow conflicts with scroll mutation
+        let output_lines: Vec<String> = app.agent_outputs[i].iter().cloned().collect();
+        let stream_buf = app.agent_stream_buffers[i].clone();
+        let has_stream = !stream_buf.is_empty();
+        let is_pinned = app.agent_scroll[i].pinned;
 
-        // Include the in-progress streaming line in the effective total
-        // so the scrollbar and indicator account for it
-        let effective_total = total + usize::from(has_stream && scroll.pinned);
+        // Build text lines from agent output
+        let mut lines: Vec<Line> = output_lines
+            .iter()
+            .map(|s| Line::from(s.as_str()))
+            .collect();
 
-        // offset is the last visible line; first visible = offset - (height - 1)
-        let end = (scroll.offset + 1).min(total);
-        let start = end.saturating_sub(inner_height);
+        // Append the in-progress streaming line when pinned
+        if has_stream && is_pinned {
+            lines.push(Line::from(vec![
+                Span::raw(stream_buf.as_str()),
+                Span::styled("\u{258d}", Style::default().fg(Color::Yellow)),
+            ]));
+        }
+
+        let text = Text::from(lines);
+        let paragraph = Paragraph::new(text).wrap(Wrap { trim: false });
+
+        // Compute total visual rows after wrapping
+        let total_visual = paragraph.line_count(inner_width);
+        let max_scroll = total_visual.saturating_sub(inner_height);
+
+        // Update scroll state
+        let scroll = &mut app.agent_scroll[i];
+        scroll.max_scroll = max_scroll;
+
+        let visual_offset = if scroll.pinned {
+            max_scroll
+        } else {
+            scroll.offset.min(max_scroll)
+        };
+        scroll.offset = visual_offset;
 
         // Build title with scroll indicator
-        let title = if effective_total > inner_height {
-            let at_bottom = scroll.pinned || end >= total;
+        let title = if total_visual > inner_height {
+            let at_bottom = scroll.pinned || visual_offset >= max_scroll;
             let indicator = if at_bottom {
-                "end"
+                "end".to_string()
             } else {
-                &format!("{end}/{effective_total}")
+                let visible_end = (visual_offset + inner_height).min(total_visual);
+                format!("{visible_end}/{total_visual}")
             };
             format!("{}[{}] ", base_titles[i], indicator)
         } else {
@@ -125,40 +151,17 @@ fn render_agent_outputs(frame: &mut Frame, area: Rect, app: &App) {
             .borders(Borders::ALL)
             .border_style(border_style);
 
-        // Reserve one row for the streaming line when pinned and buffer is non-empty
-        let show_stream_line = has_stream && scroll.pinned;
-        let output_rows = if show_stream_line {
-            inner_height.saturating_sub(1)
-        } else {
-            inner_height
-        };
+        let paragraph = paragraph
+            .scroll((visual_offset as u16, 0))
+            .block(block);
 
-        let mut items: Vec<ListItem> = app.agent_outputs[i]
-            .iter()
-            .skip(start)
-            .take(output_rows)
-            .map(|line| ListItem::new(line.as_str()))
-            .collect();
-
-        // Append the in-progress streaming line with a yellow cursor indicator
-        if show_stream_line {
-            let stream_line = Line::from(vec![
-                Span::raw(app.agent_stream_buffers[i].as_str()),
-                Span::styled("▍", Style::default().fg(Color::Yellow)),
-            ]);
-            items.push(ListItem::new(stream_line));
-        }
-
-        let list = List::new(items).block(block);
-
-        frame.render_widget(list, *col);
+        frame.render_widget(paragraph, *col);
 
         // Render scrollbar when content overflows the viewport
-        if effective_total > inner_height {
-            let mut scrollbar_state =
-                ScrollbarState::new(effective_total.saturating_sub(inner_height))
-                    .position(start)
-                    .viewport_content_length(inner_height);
+        if total_visual > inner_height {
+            let mut scrollbar_state = ScrollbarState::new(max_scroll)
+                .position(visual_offset)
+                .viewport_content_length(inner_height);
 
             let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .thumb_style(Style::default().fg(Color::DarkGray))
