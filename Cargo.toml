@@ -1,6 +1,6 @@
 [package]
 name = "leeson"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "leveraged execution engine for speculative operations network"
 license-file = "LICENSE"

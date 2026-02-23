@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-23
+
 ### Added
 
 - Implement multi-agent trading system with Python/PyO3 bridge (41878b1)
